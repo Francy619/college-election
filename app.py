@@ -56,15 +56,29 @@ class ElectionPDF(FPDF):
                 self.cell(40, 10, str(cand['Gender']), border=1, align="C")
             self.ln()
 
-    def create_ballot(self, post_name, class_name, seats, candidates, is_main_post=False):
-        self.add_page()
+    def create_multiple_ballots(self, count, post_name, class_name, seats, candidates, is_main_post=False):
+        """Loops through the required count and places 2 ballots per A4 page."""
+        for idx in range(count):
+            if idx % 2 == 0:
+                self.add_page()
+                y_offset = 0
+            else:
+                y_offset = 148.5 # Start exactly halfway down an A4 page (297mm)
+                
+                # Draw a horizontal perforated cut-line across the middle of the page
+                self.set_line_width(0.5)
+                for x in range(0, 210, 4):
+                    self.line(x, 148.5, x + 2, 148.5)
+            
+            # Draw the actual ballot elements at the calculated y_offset
+            self._draw_single_ballot(y_offset, post_name, class_name, seats, candidates, is_main_post)
+
+    def _draw_single_ballot(self, y_offset, post_name, class_name, seats, candidates, is_main_post):
+        """Draws a single ballot layout with all coordinates shifted by y_offset."""
         self.set_font("Arial", "", 10)
         
-        # We will draw the ballot layout. Counterfoil (Left 30%), Cut Line, Ballot (Right 65%)
-        # Left Margin: 10, Right Margin: 200
-        
         # --- COUNTER FOIL (LEFT) ---
-        self.set_xy(10, 15)
+        self.set_xy(10, 15 + y_offset)
         self.set_font("Arial", "B", 10)
         self.cell(60, 5, "SL. No. ________", ln=True)
         self.set_font("Arial", "", 9)
@@ -75,41 +89,45 @@ class ElectionPDF(FPDF):
         
         post_disp = post_name if is_main_post else f"{post_name} ({class_name})"
         self.multi_cell(60, 5, f"Name of the post: {post_disp}")
+        self.set_x(10)
         self.cell(60, 5, f"No. of Seats: {seats}", ln=True)
         self.ln(2)
+        self.set_x(10)
         self.cell(60, 5, "Name of the elector: ____________", ln=True)
         if not is_main_post:
+            self.set_x(10)
             self.cell(60, 5, f"Class: {class_name}", ln=True)
+        self.set_x(10)
         self.cell(60, 5, "Electoral Roll No.: ____________", ln=True)
+        self.set_x(10)
         self.cell(60, 5, "Date of poll: ____________", ln=True)
         
-       # --- CUT HERE LINE ---
+        # --- VERTICAL CUT HERE LINE ---
         self.set_line_width(0.5)
-        
-        # Manually draw a dashed line to ensure compatibility across all fpdf versions
-        for y in range(10, 280, 4):
+        for y in range(int(10 + y_offset), int(140 + y_offset), 4):
             self.line(75, y, 75, y + 2)
             
-        self.set_xy(71, 140)
         self.set_font("Arial", "", 8)
-        
-        # Vertical text rotation workaround
-        self.text(77, 140, "Cut here.........................................................")
+        self.text(77, 135 + y_offset, "Cut here.........................................................")
         
         # --- BALLOT PAPER (RIGHT) ---
-        self.set_xy(85, 15)
+        self.set_xy(85, 15 + y_offset)
         self.set_font("Arial", "B", 10)
         self.cell(50, 5, "SL. No. ________")
         self.cell(60, 5, "Signature of the RO..................", ln=True, align="R")
         
-        self.set_xy(85, 25)
+        self.set_xy(85, 25 + y_offset)
         self.set_font("Arial", "", 10)
         self.cell(110, 5, "Election to College Union 2026-27", ln=True, align="C")
+        self.set_x(85)
         self.set_font("Arial", "B", 10)
         self.multi_cell(110, 5, f"Name of the post: {post_disp}", align="C")
+        self.set_x(85)
         self.cell(110, 5, f"No. of Seats: {seats}", ln=True, align="C")
+        self.set_x(85)
         self.set_font("Arial", "B", 12)
         self.cell(110, 8, "BALLOT PAPER", ln=True, align="C")
+        self.set_x(85)
         self.set_font("Arial", "", 9)
         self.multi_cell(110, 4, "(Vote by placing the mark 'X' against the name of the candidate for whom you vote)", align="C")
         self.ln(3)
@@ -117,45 +135,46 @@ class ElectionPDF(FPDF):
         # Table Headers
         self.set_x(85)
         self.set_font("Arial", "B", 10)
-        self.cell(25, 10, "Electoral Roll No", border=1, align="C")
-        self.cell(60, 10, "Name", border=1, align="C")
-        self.cell(25, 10, "Space for marking", border=1, align="C")
+        self.cell(25, 8, "Roll No", border=1, align="C")
+        self.cell(60, 8, "Name", border=1, align="C")
+        self.cell(25, 8, "Space", border=1, align="C")
         self.ln()
         
         # Table Rows
         self.set_font("Arial", "B", 10)
+        row_height = 10
         if is_main_post:
-            # Main post layout (No gender split)
             for cand in candidates:
                 self.set_x(85)
-                self.cell(25, 12, str(cand['Roll No']), border=1, align="C")
-                self.cell(60, 12, str(cand['Name']), border=1)
-                self.cell(25, 12, "", border=1)
+                self.cell(25, row_height, str(cand['Roll No']), border=1, align="C")
+                self.cell(60, row_height, str(cand['Name']), border=1)
+                self.cell(25, row_height, "", border=1)
                 self.ln()
         else:
-            # Class Rep layout (Gender split)
             males = [c for c in candidates if c['Gender'] == 'Male']
             females = [c for c in candidates if c['Gender'] == 'Female']
             
-            if males:
+            # Logic Update: Only print the section if there are multiple candidates competing
+            if len(males) > 1:
                 self.set_x(85)
-                self.cell(110, 8, "Class Representative Male", border=1, align="C")
+                self.cell(110, 6, "Class Representative Male", border=1, align="C")
                 self.ln()
                 for cand in males:
                     self.set_x(85)
-                    self.cell(25, 12, str(cand['Roll No']), border=1, align="C")
-                    self.cell(60, 12, str(cand['Name']), border=1)
-                    self.cell(25, 12, "", border=1)
+                    self.cell(25, row_height, str(cand['Roll No']), border=1, align="C")
+                    self.cell(60, row_height, str(cand['Name']), border=1)
+                    self.cell(25, row_height, "", border=1)
                     self.ln()
-            if females:
+                    
+            if len(females) > 1:
                 self.set_x(85)
-                self.cell(110, 8, "Class Representative Female", border=1, align="C")
+                self.cell(110, 6, "Class Representative Female", border=1, align="C")
                 self.ln()
                 for cand in females:
                     self.set_x(85)
-                    self.cell(25, 12, str(cand['Roll No']), border=1, align="C")
-                    self.cell(60, 12, str(cand['Name']), border=1)
-                    self.cell(25, 12, "", border=1)
+                    self.cell(25, row_height, str(cand['Roll No']), border=1, align="C")
+                    self.cell(60, row_height, str(cand['Name']), border=1)
+                    self.cell(25, row_height, "", border=1)
                     self.ln()
 
 # --- APP LAYOUT ---
@@ -193,22 +212,18 @@ with tab1:
             st.rerun()
             
         st.markdown("---")
-        ballot_count = st.number_input("Number of Ballot Papers to Generate", min_value=1, max_value=200, value=10, key="b_count_class")
+        ballot_count = st.number_input("Number of Ballot Papers to Generate", min_value=1, max_value=500, value=60, key="b_count_class")
         
         pdf_col1, pdf_col2 = st.columns(2)
         with pdf_col1:
-            # Generate Candidate List
             pdf_list = ElectionPDF()
             pdf_list.candidate_list(f"Candidate List - Class Representative ({class_name})", st.session_state.class_candidates, is_class=True)
             st.download_button("📥 Download Candidate List PDF", data=pdf_list.output(dest='S').encode('latin1'), file_name=f"Candidates_{class_name}.pdf")
             
         with pdf_col2:
-            # Generate Ballots
             pdf_ballot = ElectionPDF()
-            for _ in range(ballot_count):
-                pdf_ballot.create_ballot("Class representative", class_name, class_seats, st.session_state.class_candidates, is_main_post=False)
-            st.download_button("🖨️ Download Ballot Papers PDF", data=pdf_ballot.output(dest='S').encode('latin1'), file_name=f"Ballots_{class_name}.pdf")
-
+            pdf_ballot.create_multiple_ballots(ballot_count, "Class representative", class_name, class_seats, st.session_state.class_candidates, is_main_post=False)
+            st.download_button("🖨️ Download Ballot Papers PDF (2 per page)", data=pdf_ballot.output(dest='S').encode('latin1'), file_name=f"Ballots_{class_name}.pdf")
 
 with tab2:
     st.subheader("Manage Main Post Election")
@@ -240,21 +255,18 @@ with tab2:
             st.rerun()
             
         st.markdown("---")
-        m_ballot_count = st.number_input("Number of Ballot Papers to Generate", min_value=1, max_value=1000, value=50, key="b_count_main")
+        m_ballot_count = st.number_input("Number of Ballot Papers to Generate", min_value=1, max_value=2000, value=50, key="b_count_main")
         
         mpdf_col1, mpdf_col2 = st.columns(2)
         with mpdf_col1:
-            # Generate Candidate List
             pdf_mlist = ElectionPDF()
             pdf_mlist.candidate_list(f"Candidate List - {post_name}", st.session_state.main_candidates, is_class=False)
             st.download_button("📥 Download Candidate List PDF", data=pdf_mlist.output(dest='S').encode('latin1'), file_name=f"Candidates_{post_name}.pdf")
             
         with mpdf_col2:
-            # Generate Ballots
             pdf_mballot = ElectionPDF()
-            for _ in range(m_ballot_count):
-                pdf_mballot.create_ballot(post_name, "", main_seats, st.session_state.main_candidates, is_main_post=True)
-            st.download_button("🖨️ Download Ballot Papers PDF", data=pdf_mballot.output(dest='S').encode('latin1'), file_name=f"Ballots_{post_name}.pdf")
+            pdf_mballot.create_multiple_ballots(m_ballot_count, post_name, "", main_seats, st.session_state.main_candidates, is_main_post=True)
+            st.download_button("🖨️ Download Ballot Papers PDF (2 per page)", data=pdf_mballot.output(dest='S').encode('latin1'), file_name=f"Ballots_{post_name}.pdf")
 
 # --- CUSTOM FOOTER ---
 st.markdown("<br><br><hr>", unsafe_allow_html=True)
