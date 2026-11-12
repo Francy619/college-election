@@ -7,6 +7,18 @@ import os
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="College Election Manager", layout="wide", page_icon="🗳️")
 
+# --- INITIALIZE SESSION STATE ---
+if "all_classes" not in st.session_state:
+    st.session_state.all_classes = {}
+if "all_main_posts" not in st.session_state:
+    st.session_state.all_main_posts = {}
+
+# Default program lists stored safely in memory so they never go blank
+if "ug_programs_text" not in st.session_state:
+    st.session_state.ug_programs_text = "B. Sc Mathematics\nB. Sc Physics\nB. Sc Chemistry\nB. Sc Botany\nB. Sc Zoology\nB. A English\nB. A Economics\nB. A History\nB. Com F&T\nB. Com FM\nB. Com LM\nB. Com Accounting\nB. Voc Agriculture Technology\nBCA\nBBA"
+if "pg_programs_text" not in st.session_state:
+    st.session_state.pg_programs_text = "M. Sc Mathematics\nM. Sc Physics\nM. Sc Chemistry\nM. Sc Botany\nM. Sc Zoology\nM. A English\nM. A Economics\nM. A History\nM. Com"
+
 # --- GLOBAL SETTINGS (SIDEBAR) ---
 st.sidebar.header("Global Settings")
 election_year = st.sidebar.text_input("Election Year", value="2026-27")
@@ -17,14 +29,12 @@ st.sidebar.markdown("---")
 st.sidebar.header("Edit Program Lists")
 st.sidebar.write("Edit the courses below (one per line). The dropdowns will update automatically.")
 
-default_ug = "B. Sc Mathematics\nB. Sc Physics\nB. Sc Chemistry\nB. Sc Botany\nB. Sc Zoology\nB. A English\nB. A Economics\nB. A History\nB. Com F&T\nB. Com FM\nB. Com LM\nB. Com Accounting\nB. Voc Agriculture Technology\nBCA\nBBA"
-default_pg = "M. Sc Mathematics\nM. Sc Physics\nM. Sc Chemistry\nM. Sc Botany\nM. Sc Zoology\nM. A English\nM. A Economics\nM. A History\nM. Com"
+# Bound directly to session state so edits are never lost
+st.sidebar.text_area("UG Programs", key="ug_programs_text", height=250)
+st.sidebar.text_area("PG Programs", key="pg_programs_text", height=200)
 
-ug_text = st.sidebar.text_area("UG Programs", value=default_ug, height=250)
-pg_text = st.sidebar.text_area("PG Programs", value=default_pg, height=200)
-
-ug_programs = [p.strip() for p in ug_text.split('\n') if p.strip()]
-pg_programs = [p.strip() for p in pg_text.split('\n') if p.strip()]
+ug_programs = [p.strip() for p in st.session_state.ug_programs_text.split('\n') if p.strip()]
+pg_programs = [p.strip() for p in st.session_state.pg_programs_text.split('\n') if p.strip()]
 
 # --- CUSTOM HEADER ---
 col_logo, col_title = st.columns([1, 6])
@@ -37,13 +47,6 @@ with col_title:
     st.markdown("<h1 style='color: #2E4053; margin-top: -15px;'>ST. DOMINIC'S COLLEGE, KANJIRAPALLY</h1>", unsafe_allow_html=True)
     st.markdown(f"<h3 style='color: #5D6D7E; margin-top: -10px;'>College Union Election Management {election_year}</h3>", unsafe_allow_html=True)
 st.markdown("---")
-
-# --- INITIALIZE SESSION STATE ---
-# Now structured as a dictionary to hold multiple classes/posts at once
-if "all_classes" not in st.session_state:
-    st.session_state.all_classes = {}
-if "all_main_posts" not in st.session_state:
-    st.session_state.all_main_posts = {}
 
 # --- PDF GENERATION CLASSES ---
 class ElectionPDF(FPDF):
@@ -84,7 +87,7 @@ class ElectionPDF(FPDF):
                 if is_class:
                     self.cell(40, 8, str(cand['Gender']), border=1, align="C")
                 self.ln()
-            self.ln(5) # Space before the next class/post
+            self.ln(5) 
 
     def create_multiple_ballots(self, count, post_name, class_name, seats, candidates, year_str, poll_date_str, is_main_post=False):
         for idx in range(count):
@@ -230,7 +233,8 @@ with tab1:
         st.session_state.all_classes[class_name]['seats'] = class_seats
         
     st.markdown("##### Add Candidate")
-    with st.form("class_candidate_form"):
+    # clear_on_submit=True makes the form text boxes blank instantly after clicking Add
+    with st.form("class_candidate_form", clear_on_submit=True):
         col1, col2, col3, col4 = st.columns([2, 3, 2, 1])
         with col1:
             roll_no = st.number_input("Electoral Roll No.", min_value=1, step=1)
@@ -244,7 +248,7 @@ with tab1:
             submitted = st.form_submit_button("Add")
             if submitted and cand_name:
                 st.session_state.all_classes[class_name]['candidates'].append({"Roll No": roll_no, "Name": cand_name, "Gender": gender})
-                st.rerun()
+                # No manual st.rerun() needed here, the form handles it silently.
 
     st.markdown("### Added Candidates (All Classes)")
     has_class_candidates = any(len(data['candidates']) > 0 for data in st.session_state.all_classes.values())
@@ -293,7 +297,7 @@ with tab2:
         st.session_state.all_main_posts[post_name]['seats'] = main_seats
         
     st.markdown("##### Add Candidates (From Winning Reps)")
-    with st.form("main_candidate_form"):
+    with st.form("main_candidate_form", clear_on_submit=True):
         col1, col2, col3 = st.columns([2, 4, 1])
         with col1:
             m_roll_no = st.number_input("Electoral Roll No.", min_value=1, step=1, key="m_roll")
@@ -305,7 +309,6 @@ with tab2:
             m_submitted = st.form_submit_button("Add")
             if m_submitted and m_cand_name:
                 st.session_state.all_main_posts[post_name]['candidates'].append({"Roll No": m_roll_no, "Name": m_cand_name})
-                st.rerun()
 
     st.markdown("### Added Candidates (All Main Posts)")
     has_main_candidates = any(len(data['candidates']) > 0 for data in st.session_state.all_main_posts.values())
