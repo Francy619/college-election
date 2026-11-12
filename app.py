@@ -7,6 +7,13 @@ import os
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="College Election Manager", layout="wide", page_icon="🗳️")
 
+# --- GLOBAL SETTINGS (SIDEBAR) ---
+st.sidebar.header("Global Settings")
+election_year = st.sidebar.text_input("Election Year", value="2026-27")
+poll_date = st.sidebar.text_input("Date of Poll (Leave blank for line)", value="")
+
+poll_date_display = f"{poll_date}" if poll_date else "____________"
+
 # --- CUSTOM HEADER ---
 col_logo, col_title = st.columns([1, 6])
 with col_logo:
@@ -16,7 +23,7 @@ with col_logo:
         st.markdown("<div style='height: 120px; width: 120px; border: 2px dashed #ccc; display: flex; align-items: center; justify-content: center;'><small>Add logo.png</small></div>", unsafe_allow_html=True)
 with col_title:
     st.markdown("<h1 style='color: #2E4053; margin-top: -15px;'>ST. DOMINIC'S COLLEGE, KANJIRAPALLY</h1>", unsafe_allow_html=True)
-    st.markdown("<h3 style='color: #5D6D7E; margin-top: -10px;'>College Union Election Management 2026-27</h3>", unsafe_allow_html=True)
+    st.markdown(f"<h3 style='color: #5D6D7E; margin-top: -10px;'>College Union Election Management {election_year}</h3>", unsafe_allow_html=True)
 st.markdown("---")
 
 # --- INITIALIZE SESSION STATE ---
@@ -25,14 +32,26 @@ if "class_candidates" not in st.session_state:
 if "main_candidates" not in st.session_state:
     st.session_state.main_candidates = []
 
+# --- PROGRAM LISTS ---
+ug_programs = [
+    "B. Sc Mathematics", "B. Sc Physics", "B. Sc Chemistry", "B. Sc Botany", "B. Sc Zoology",
+    "B. A English", "B. A Economics", "B. A History", 
+    "B. Com F&T", "B. Com FM", "B. Com LM", "B. Com Accounting", 
+    "B. Voc Agriculture Technology", "BCA", "BBA"
+]
+pg_programs = [
+    "M. Sc Mathematics", "M. Sc Physics", "M. Sc Chemistry", "M. Sc Botany", "M. Sc Zoology",
+    "M. A English", "M. A Economics", "M. A History", "M. Com"
+]
+
 # --- PDF GENERATION CLASSES ---
 class ElectionPDF(FPDF):
-    def candidate_list(self, title, candidates, is_class=True):
+    def candidate_list(self, title, candidates, year_str, is_class=True):
         self.add_page()
         self.set_font("Arial", "B", 16)
         self.cell(0, 10, "ST. DOMINIC'S COLLEGE, KANJIRAPALLY", ln=True, align="C")
         self.set_font("Arial", "B", 14)
-        self.cell(0, 10, "College Union Election 2026-27", ln=True, align="C")
+        self.cell(0, 10, f"College Union Election {year_str}", ln=True, align="C")
         self.set_font("Arial", "B", 12)
         self.cell(0, 10, title, ln=True, align="C")
         self.ln(5)
@@ -56,25 +75,20 @@ class ElectionPDF(FPDF):
                 self.cell(40, 10, str(cand['Gender']), border=1, align="C")
             self.ln()
 
-    def create_multiple_ballots(self, count, post_name, class_name, seats, candidates, is_main_post=False):
-        """Loops through the required count and places 2 ballots per A4 page."""
+    def create_multiple_ballots(self, count, post_name, class_name, seats, candidates, year_str, poll_date_str, is_main_post=False):
         for idx in range(count):
             if idx % 2 == 0:
                 self.add_page()
                 y_offset = 0
             else:
-                y_offset = 148.5 # Start exactly halfway down an A4 page (297mm)
-                
-                # Draw a horizontal perforated cut-line across the middle of the page
+                y_offset = 148.5 
                 self.set_line_width(0.5)
                 for x in range(0, 210, 4):
                     self.line(x, 148.5, x + 2, 148.5)
             
-            # Draw the actual ballot elements at the calculated y_offset
-            self._draw_single_ballot(y_offset, post_name, class_name, seats, candidates, is_main_post)
+            self._draw_single_ballot(y_offset, post_name, class_name, seats, candidates, year_str, poll_date_str, is_main_post)
 
-    def _draw_single_ballot(self, y_offset, post_name, class_name, seats, candidates, is_main_post):
-        """Draws a single ballot layout with all coordinates shifted by y_offset."""
+    def _draw_single_ballot(self, y_offset, post_name, class_name, seats, candidates, year_str, poll_date_str, is_main_post):
         self.set_font("Arial", "", 10)
         
         # --- COUNTER FOIL (LEFT) ---
@@ -82,7 +96,7 @@ class ElectionPDF(FPDF):
         self.set_font("Arial", "B", 10)
         self.cell(60, 5, "SL. No. ________", ln=True)
         self.set_font("Arial", "", 9)
-        self.cell(60, 5, "Election to College Union 2026-27", ln=True)
+        self.cell(60, 5, f"Election to College Union {year_str}", ln=True)
         self.set_font("Arial", "B", 9)
         self.cell(60, 5, "Counter foil of Ballot Paper", ln=True)
         self.set_font("Arial", "", 9)
@@ -100,7 +114,7 @@ class ElectionPDF(FPDF):
         self.set_x(10)
         self.cell(60, 5, "Electoral Roll No.: ____________", ln=True)
         self.set_x(10)
-        self.cell(60, 5, "Date of poll: ____________", ln=True)
+        self.cell(60, 5, f"Date of poll: {poll_date_str}", ln=True)
         
         # --- VERTICAL CUT HERE LINE ---
         self.set_line_width(0.5)
@@ -118,7 +132,7 @@ class ElectionPDF(FPDF):
         
         self.set_xy(85, 25 + y_offset)
         self.set_font("Arial", "", 10)
-        self.cell(110, 5, "Election to College Union 2026-27", ln=True, align="C")
+        self.cell(110, 5, f"Election to College Union {year_str}", ln=True, align="C")
         self.set_x(85)
         self.set_font("Arial", "B", 10)
         self.multi_cell(110, 5, f"Name of the post: {post_disp}", align="C")
@@ -154,7 +168,6 @@ class ElectionPDF(FPDF):
             males = [c for c in candidates if c['Gender'] == 'Male']
             females = [c for c in candidates if c['Gender'] == 'Female']
             
-            # Logic Update: Only print the section if there are multiple candidates competing
             if len(males) > 1:
                 self.set_x(85)
                 self.cell(110, 6, "Class Representative Male", border=1, align="C")
@@ -182,11 +195,22 @@ tab1, tab2 = st.tabs(["1. Class Representative Election", "2. Main Post Election
 
 with tab1:
     st.subheader("Manage Class Representatives")
-    c1, c2 = st.columns(2)
+    
+    # Dynamic Class Selection
+    c1, c2, c3, c4 = st.columns(4)
     with c1:
-        class_name = st.text_input("Name of the Class (e.g., I B. Sc Mathematics)", value="I B. Sc Mathematics")
+        degree_level = st.selectbox("Course Level", ["UG", "PG"])
     with c2:
+        year_options = ["I", "II", "III"] if degree_level == "UG" else ["I", "II"]
+        year = st.selectbox("Year", year_options)
+    with c3:
+        program_list = ug_programs if degree_level == "UG" else pg_programs
+        program = st.selectbox("Program", program_list)
+    with c4:
         class_seats = st.number_input("Number of Seats", min_value=1, value=2, key="c_seats")
+        
+    class_name = f"{year} {program}"
+    st.info(f"Currently managing: **{class_name}**")
         
     st.markdown("##### Add Candidates")
     with st.form("class_candidate_form"):
@@ -217,12 +241,12 @@ with tab1:
         pdf_col1, pdf_col2 = st.columns(2)
         with pdf_col1:
             pdf_list = ElectionPDF()
-            pdf_list.candidate_list(f"Candidate List - Class Representative ({class_name})", st.session_state.class_candidates, is_class=True)
+            pdf_list.candidate_list(f"Candidate List - Class Representative ({class_name})", st.session_state.class_candidates, election_year, is_class=True)
             st.download_button("📥 Download Candidate List PDF", data=pdf_list.output(dest='S').encode('latin1'), file_name=f"Candidates_{class_name}.pdf")
             
         with pdf_col2:
             pdf_ballot = ElectionPDF()
-            pdf_ballot.create_multiple_ballots(ballot_count, "Class representative", class_name, class_seats, st.session_state.class_candidates, is_main_post=False)
+            pdf_ballot.create_multiple_ballots(ballot_count, "Class representative", class_name, class_seats, st.session_state.class_candidates, election_year, poll_date_display, is_main_post=False)
             st.download_button("🖨️ Download Ballot Papers PDF (2 per page)", data=pdf_ballot.output(dest='S').encode('latin1'), file_name=f"Ballots_{class_name}.pdf")
 
 with tab2:
@@ -260,12 +284,12 @@ with tab2:
         mpdf_col1, mpdf_col2 = st.columns(2)
         with mpdf_col1:
             pdf_mlist = ElectionPDF()
-            pdf_mlist.candidate_list(f"Candidate List - {post_name}", st.session_state.main_candidates, is_class=False)
+            pdf_mlist.candidate_list(f"Candidate List - {post_name}", st.session_state.main_candidates, election_year, is_class=False)
             st.download_button("📥 Download Candidate List PDF", data=pdf_mlist.output(dest='S').encode('latin1'), file_name=f"Candidates_{post_name}.pdf")
             
         with mpdf_col2:
             pdf_mballot = ElectionPDF()
-            pdf_mballot.create_multiple_ballots(m_ballot_count, post_name, "", main_seats, st.session_state.main_candidates, is_main_post=True)
+            pdf_mballot.create_multiple_ballots(m_ballot_count, post_name, "", main_seats, st.session_state.main_candidates, election_year, poll_date_display, is_main_post=True)
             st.download_button("🖨️ Download Ballot Papers PDF (2 per page)", data=pdf_mballot.output(dest='S').encode('latin1'), file_name=f"Ballots_{post_name}.pdf")
 
 # --- CUSTOM FOOTER ---
