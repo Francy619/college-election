@@ -53,7 +53,6 @@ if election_year not in db:
     }
     save_data(db)
 else:
-    # Update poll date if changed
     db[election_year]["poll_date"] = poll_date
     save_data(db)
 
@@ -64,61 +63,62 @@ st.sidebar.write("Edit college programs below (one per line):")
 ug_input = st.sidebar.text_area("UG Programs", key="ug_text", height=220)
 pg_input = st.sidebar.text_area("PG Programs", key="pg_text", height=180)
 
-# Update programs in DB for current year
 db[election_year]["programs"]["UG"] = [p.strip() for p in ug_input.split('\n') if p.strip()]
 db[election_year]["programs"]["PG"] = [p.strip() for p in pg_input.split('\n') if p.strip()]
 save_data(db)
 
-# --- CUSTOM HEADER ---
-col_logo, col_title = st.columns([1, 6])
-with col_logo:
-    if os.path.exists("logo.png"):
-        st.image("logo.png", width=120) 
-    else:
-        st.markdown("<div style='height: 120px; width: 120px; border: 2px dashed #ccc; display: flex; align-items: center; justify-content: center;'><small>Add logo.png</small></div>", unsafe_allow_html=True)
-with col_title:
-    st.markdown("<h1 style='color: #2E4053; margin-top: -15px;'>ST. DOMINIC'S COLLEGE, KANJIRAPALLY</h1>", unsafe_allow_html=True)
-    st.markdown(f"<h3 style='color: #5D6D7E; margin-top: -10px;'>College Union Election Management ({election_year})</h3>", unsafe_allow_html=True)
+# --- DEFINE PAGE VIEWS FOR st.navigation() ---
+def home_page():
+    # --- CUSTOM HEADER ---
+    col_logo, col_title = st.columns([1, 6])
+    with col_logo:
+        if os.path.exists("logo.png"):
+            st.image("logo.png", width=120) 
+        else:
+            st.markdown("<div style='height: 120px; width: 120px; border: 2px dashed #ccc; display: flex; align-items: center; justify-content: center;'><small>Add logo.png</small></div>", unsafe_allow_html=True)
+    with col_title:
+        st.markdown("<h1 style='color: #2E4053; margin-top: -15px;'>ST. DOMINIC'S COLLEGE, KANJIRAPALLY</h1>", unsafe_allow_html=True)
+        st.markdown(f"<h3 style='color: #5D6D7E; margin-top: -10px;'>College Union Election Management ({election_year})</h3>", unsafe_allow_html=True)
 
-st.markdown("---")
+    st.markdown("---")
 
-# --- MAIN DASHBOARD HOME PAGE ---
-st.subheader("📊 Election Dashboard")
-st.write(f"Welcome to the College Election Management Portal. You are currently managing records for **Academic Year {election_year}**.")
+    # --- MAIN DASHBOARD HOME PAGE ---
+    st.subheader("📊 Election Dashboard")
+    st.write(f"Welcome to the College Election Management Portal. You are currently managing records for **Academic Year {election_year}**.")
 
-year_data = db[election_year]
-class_reps_data = year_data.get("class_reps", {})
+    year_data = db[election_year]
+    class_reps_data = year_data.get("class_reps", {})
 
-# Calculate quick metrics
-total_classes_configured = len(class_reps_data)
-total_nominations = sum(len(c_data["candidates"]) for c_data in class_reps_data.values())
-total_withdrawn = sum(len([c for c in c_data["candidates"] if c.get("status") == "Withdrawn"]) for c_data in class_reps_data.values())
-total_active = total_nominations - total_withdrawn
+    total_classes_configured = len(class_reps_data)
+    total_nominations = sum(len(c_data["candidates"]) for c_data in class_reps_data.values())
+    total_withdrawn = sum(len([c for c in c_data["candidates"] if c.get("status") == "Withdrawn"]) for c_data in class_reps_data.values())
+    total_active = total_nominations - total_withdrawn
 
-m1, m2, m3, m4 = st.columns(4)
-m1.metric("Classes with Nominations", total_classes_configured)
-m2.metric("Total Nominations", total_nominations)
-m3.metric("Withdrawn Candidates", total_withdrawn)
-m4.metric("Active Contestants", total_active)
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Classes with Nominations", total_classes_configured)
+    m2.metric("Total Nominations", total_nominations)
+    m3.metric("Withdrawn Candidates", total_withdrawn)
+    m4.metric("Active Contestants", total_active)
 
-st.markdown("---")
-st.markdown("### 🧭 Quick Navigation Guide")
-st.write("Use the **Sidebar menu on the left** (generated automatically by the `pages/` folder) to navigate through each phase of the election:")
+    # --- CUSTOM FOOTER ---
+    st.markdown("<br><br><hr>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #808B96; font-size: 14px;'>Developed by Francis Thomas</p>", unsafe_allow_html=True)
 
-col_a, col_b = st.columns(2)
-with col_a:
-    st.markdown("""
-    * **1. Class Rep Nominations**: Add students, roll numbers, and genders for UG/PG classes.
-    * **2. Withdrawals & Final List**: Process candidate dropouts and export official valid lists.
-    * **3. Ballot Generation**: Print individual or master consolidated ballot packets (2 per page).
-    """)
-with col_b:
-    st.markdown("""
-    * **4. Class Rep Results**: Record election outcomes (Elected / Lost) to lock in the electoral college.
-    * **5. Main Post Config**: Define union executive posts like Chairperson and UUC.
-    * **6. Main Post Elections**: Nominate winning class reps, handle withdrawals, and print main ballots.
-    """)
+# Define the navigation structure using st.navigation
+pg = st.navigation({
+    "Overview": [
+        st.Page(home_page, title="Dashboard Home", icon="📊")
+    ],
+    "Election Workflow": [
+        # Note: You can point these to your separate page script files if you keep them in a folder like 'views/'
+        st.Page("pages/1_Class_Rep_Nominations.py", title="1. Class Rep Nominations", icon="📝"),
+        st.Page("pages/2_Withdrawals_&_Final.py", title="2. Scrutiny & Withdrawals", icon="🛑"),
+        st.Page("pages/3_Ballot_Generation.py", title="3. Ballot Generation", icon="🖨️"),
+        st.Page("pages/4_Class_Rep_Results.py", title="4. Class Rep Results", icon="🏆"),
+        st.Page("pages/5_Main_Post_Config.py", title="5. Main Post Config", icon="⚙️"),
+        st.Page("pages/6_Main_Post_Elections.py", title="6. Main Post Elections", icon="🗳️")
+    ]
+})
 
-# --- CUSTOM FOOTER ---
-st.markdown("<br><br><hr>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: #808B96; font-size: 14px;'>Developed by Francis Thomas</p>", unsafe_allow_html=True)
+# Run the selected page
+pg.run()
