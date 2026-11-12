@@ -83,15 +83,17 @@ class ElectionPDF(FPDF):
         self.cell(60, 5, "Electoral Roll No.: ____________", ln=True)
         self.cell(60, 5, "Date of poll: ____________", ln=True)
         
-        # --- CUT HERE LINE ---
+       # --- CUT HERE LINE ---
         self.set_line_width(0.5)
-        self.set_dash_pattern(dash=2, space=2)
-        self.line(75, 10, 75, 280)
-        self.set_dash_pattern() # Reset
+        
+        # Manually draw a dashed line to ensure compatibility across all fpdf versions
+        for y in range(10, 280, 4):
+            self.line(75, y, 75, y + 2)
+            
         self.set_xy(71, 140)
         self.set_font("Arial", "", 8)
         
-        # Vertical text rotation workaround in standard fpdf is tricky, so we place simple text
+        # Vertical text rotation workaround
         self.text(77, 140, "Cut here.........................................................")
         
         # --- BALLOT PAPER (RIGHT) ---
