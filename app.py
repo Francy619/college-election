@@ -11,8 +11,20 @@ st.set_page_config(page_title="College Election Manager", layout="wide", page_ic
 st.sidebar.header("Global Settings")
 election_year = st.sidebar.text_input("Election Year", value="2026-27")
 poll_date = st.sidebar.text_input("Date of Poll (Leave blank for line)", value="")
-
 poll_date_display = f"{poll_date}" if poll_date else "____________"
+
+st.sidebar.markdown("---")
+st.sidebar.header("Edit Program Lists")
+st.sidebar.write("Edit the courses below (one per line). The dropdowns will update automatically.")
+
+default_ug = "B. Sc Mathematics\nB. Sc Physics\nB. Sc Chemistry\nB. Sc Botany\nB. Sc Zoology\nB. A English\nB. A Economics\nB. A History\nB. Com F&T\nB. Com FM\nB. Com LM\nB. Com Accounting\nB. Voc Agriculture Technology\nBCA\nBBA"
+default_pg = "M. Sc Mathematics\nM. Sc Physics\nM. Sc Chemistry\nM. Sc Botany\nM. Sc Zoology\nM. A English\nM. A Economics\nM. A History\nM. Com"
+
+ug_text = st.sidebar.text_area("UG Programs", value=default_ug, height=250)
+pg_text = st.sidebar.text_area("PG Programs", value=default_pg, height=200)
+
+ug_programs = [p.strip() for p in ug_text.split('\n') if p.strip()]
+pg_programs = [p.strip() for p in pg_text.split('\n') if p.strip()]
 
 # --- CUSTOM HEADER ---
 col_logo, col_title = st.columns([1, 6])
@@ -27,26 +39,15 @@ with col_title:
 st.markdown("---")
 
 # --- INITIALIZE SESSION STATE ---
-if "class_candidates" not in st.session_state:
-    st.session_state.class_candidates = []
-if "main_candidates" not in st.session_state:
-    st.session_state.main_candidates = []
-
-# --- PROGRAM LISTS ---
-ug_programs = [
-    "B. Sc Mathematics", "B. Sc Physics", "B. Sc Chemistry", "B. Sc Botany", "B. Sc Zoology",
-    "B. A English", "B. A Economics", "B. A History", 
-    "B. Com F&T", "B. Com FM", "B. Com LM", "B. Com Accounting", 
-    "B. Voc Agriculture Technology", "BCA", "BBA"
-]
-pg_programs = [
-    "M. Sc Mathematics", "M. Sc Physics", "M. Sc Chemistry", "M. Sc Botany", "M. Sc Zoology",
-    "M. A English", "M. A Economics", "M. A History", "M. Com"
-]
+# Now structured as a dictionary to hold multiple classes/posts at once
+if "all_classes" not in st.session_state:
+    st.session_state.all_classes = {}
+if "all_main_posts" not in st.session_state:
+    st.session_state.all_main_posts = {}
 
 # --- PDF GENERATION CLASSES ---
 class ElectionPDF(FPDF):
-    def candidate_list(self, title, candidates, year_str, is_class=True):
+    def consolidated_candidate_list(self, title, data_dict, year_str, is_class=True):
         self.add_page()
         self.set_font("Arial", "B", 16)
         self.cell(0, 10, "ST. DOMINIC'S COLLEGE, KANJIRAPALLY", ln=True, align="C")
@@ -56,24 +57,34 @@ class ElectionPDF(FPDF):
         self.cell(0, 10, title, ln=True, align="C")
         self.ln(5)
         
-        # Table Header
-        self.set_font("Arial", "B", 10)
-        self.cell(20, 10, "SL No", border=1, align="C")
-        self.cell(40, 10, "Electoral Roll No", border=1, align="C")
-        self.cell(90, 10, "Name of Candidate", border=1, align="C")
-        if is_class:
-            self.cell(40, 10, "Gender", border=1, align="C")
-        self.ln()
-        
-        # Table Data
-        self.set_font("Arial", "", 10)
-        for idx, cand in enumerate(candidates):
-            self.cell(20, 10, str(idx+1), border=1, align="C")
-            self.cell(40, 10, str(cand['Roll No']), border=1, align="C")
-            self.cell(90, 10, str(cand['Name']), border=1)
+        for heading, data in data_dict.items():
+            if not data['candidates']:
+                continue
+                
+            # Print Class/Post Heading
+            self.set_font("Arial", "BU", 11)
+            label = "Class" if is_class else "Post"
+            self.cell(0, 10, f"{label}: {heading} (Seats: {data['seats']})", ln=True, align="L")
+            
+            # Table Header
+            self.set_font("Arial", "B", 10)
+            self.cell(20, 8, "SL No", border=1, align="C")
+            self.cell(40, 8, "Electoral Roll No", border=1, align="C")
+            self.cell(90, 8, "Name of Candidate", border=1, align="C")
             if is_class:
-                self.cell(40, 10, str(cand['Gender']), border=1, align="C")
+                self.cell(40, 8, "Gender", border=1, align="C")
             self.ln()
+            
+            # Table Data
+            self.set_font("Arial", "", 10)
+            for idx, cand in enumerate(data['candidates']):
+                self.cell(20, 8, str(idx+1), border=1, align="C")
+                self.cell(40, 8, str(cand['Roll No']), border=1, align="C")
+                self.cell(90, 8, str(cand['Name']), border=1)
+                if is_class:
+                    self.cell(40, 8, str(cand['Gender']), border=1, align="C")
+                self.ln()
+            self.ln(5) # Space before the next class/post
 
     def create_multiple_ballots(self, count, post_name, class_name, seats, candidates, year_str, poll_date_str, is_main_post=False):
         for idx in range(count):
@@ -191,7 +202,7 @@ class ElectionPDF(FPDF):
                     self.ln()
 
 # --- APP LAYOUT ---
-tab1, tab2 = st.tabs(["1. Class Representative Election", "2. Main Post Election (Chairperson)"])
+tab1, tab2 = st.tabs(["1. Class Representative Election", "2. Main Post Election"])
 
 with tab1:
     st.subheader("Manage Class Representatives")
@@ -210,9 +221,15 @@ with tab1:
         class_seats = st.number_input("Number of Seats", min_value=1, value=2, key="c_seats")
         
     class_name = f"{year} {program}"
-    st.info(f"Currently managing: **{class_name}**")
+    st.info(f"Currently adding candidates to: **{class_name}**")
+    
+    # Ensure this class exists in the state
+    if class_name not in st.session_state.all_classes:
+        st.session_state.all_classes[class_name] = {'seats': class_seats, 'candidates': []}
+    else:
+        st.session_state.all_classes[class_name]['seats'] = class_seats
         
-    st.markdown("##### Add Candidates")
+    st.markdown("##### Add Candidate")
     with st.form("class_candidate_form"):
         col1, col2, col3, col4 = st.columns([2, 3, 2, 1])
         with col1:
@@ -226,36 +243,54 @@ with tab1:
             st.write("")
             submitted = st.form_submit_button("Add")
             if submitted and cand_name:
-                st.session_state.class_candidates.append({"Roll No": roll_no, "Name": cand_name, "Gender": gender})
+                st.session_state.all_classes[class_name]['candidates'].append({"Roll No": roll_no, "Name": cand_name, "Gender": gender})
                 st.rerun()
 
-    if st.session_state.class_candidates:
-        st.dataframe(pd.DataFrame(st.session_state.class_candidates), use_container_width=True)
-        if st.button("Clear Class Candidates"):
-            st.session_state.class_candidates = []
+    st.markdown("### Added Candidates (All Classes)")
+    has_class_candidates = any(len(data['candidates']) > 0 for data in st.session_state.all_classes.values())
+    
+    if has_class_candidates:
+        for c_name, c_data in st.session_state.all_classes.items():
+            if c_data['candidates']:
+                with st.expander(f"{c_name} (Seats: {c_data['seats']} | Candidates: {len(c_data['candidates'])})", expanded=True):
+                    st.dataframe(pd.DataFrame(c_data['candidates']), use_container_width=True)
+                    
+        if st.button("⚠️ Clear ALL Class Candidates"):
+            st.session_state.all_classes = {}
             st.rerun()
             
         st.markdown("---")
-        ballot_count = st.number_input("Number of Ballot Papers to Generate", min_value=1, max_value=500, value=60, key="b_count_class")
-        
+        st.markdown("### Generate Documents")
         pdf_col1, pdf_col2 = st.columns(2)
         with pdf_col1:
+            st.write("**Master Candidate List** (Contains all classes above)")
             pdf_list = ElectionPDF()
-            pdf_list.candidate_list(f"Candidate List - Class Representative ({class_name})", st.session_state.class_candidates, election_year, is_class=True)
-            st.download_button("📥 Download Candidate List PDF", data=pdf_list.output(dest='S').encode('latin1'), file_name=f"Candidates_{class_name}.pdf")
+            pdf_list.consolidated_candidate_list("Consolidated Candidate List - Class Representatives", st.session_state.all_classes, election_year, is_class=True)
+            st.download_button("📥 Download Master Candidate List PDF", data=pdf_list.output(dest='S').encode('latin1'), file_name="Master_Class_Reps_List.pdf")
             
         with pdf_col2:
-            pdf_ballot = ElectionPDF()
-            pdf_ballot.create_multiple_ballots(ballot_count, "Class representative", class_name, class_seats, st.session_state.class_candidates, election_year, poll_date_display, is_main_post=False)
-            st.download_button("🖨️ Download Ballot Papers PDF (2 per page)", data=pdf_ballot.output(dest='S').encode('latin1'), file_name=f"Ballots_{class_name}.pdf")
+            st.write(f"**Ballot Papers for {class_name}**")
+            ballot_count = st.number_input(f"No. of Ballots for {class_name}", min_value=1, max_value=500, value=60, key="b_count_class")
+            if st.session_state.all_classes[class_name]['candidates']:
+                pdf_ballot = ElectionPDF()
+                pdf_ballot.create_multiple_ballots(ballot_count, "Class representative", class_name, class_seats, st.session_state.all_classes[class_name]['candidates'], election_year, poll_date_display, is_main_post=False)
+                st.download_button(f"🖨️ Download Ballots for {class_name}", data=pdf_ballot.output(dest='S').encode('latin1'), file_name=f"Ballots_{class_name}.pdf")
+            else:
+                st.warning("Add candidates to this class first to generate ballots.")
 
 with tab2:
-    st.subheader("Manage Main Post Election")
+    st.subheader("Manage Main Post Elections")
     m1, m2 = st.columns(2)
     with m1:
         post_name = st.text_input("Name of the Post", value="The Chairperson")
     with m2:
         main_seats = st.number_input("Number of Seats", min_value=1, value=1, key="m_seats")
+        
+    st.info(f"Currently adding candidates to: **{post_name}**")
+    if post_name not in st.session_state.all_main_posts:
+        st.session_state.all_main_posts[post_name] = {'seats': main_seats, 'candidates': []}
+    else:
+        st.session_state.all_main_posts[post_name]['seats'] = main_seats
         
     st.markdown("##### Add Candidates (From Winning Reps)")
     with st.form("main_candidate_form"):
@@ -269,28 +304,40 @@ with tab2:
             st.write("")
             m_submitted = st.form_submit_button("Add")
             if m_submitted and m_cand_name:
-                st.session_state.main_candidates.append({"Roll No": m_roll_no, "Name": m_cand_name})
+                st.session_state.all_main_posts[post_name]['candidates'].append({"Roll No": m_roll_no, "Name": m_cand_name})
                 st.rerun()
 
-    if st.session_state.main_candidates:
-        st.dataframe(pd.DataFrame(st.session_state.main_candidates), use_container_width=True)
-        if st.button("Clear Main Candidates"):
-            st.session_state.main_candidates = []
+    st.markdown("### Added Candidates (All Main Posts)")
+    has_main_candidates = any(len(data['candidates']) > 0 for data in st.session_state.all_main_posts.values())
+
+    if has_main_candidates:
+        for p_name, p_data in st.session_state.all_main_posts.items():
+            if p_data['candidates']:
+                with st.expander(f"{p_name} (Seats: {p_data['seats']} | Candidates: {len(p_data['candidates'])})", expanded=True):
+                    st.dataframe(pd.DataFrame(p_data['candidates']), use_container_width=True)
+                    
+        if st.button("⚠️ Clear ALL Main Post Candidates"):
+            st.session_state.all_main_posts = {}
             st.rerun()
             
         st.markdown("---")
-        m_ballot_count = st.number_input("Number of Ballot Papers to Generate", min_value=1, max_value=2000, value=50, key="b_count_main")
-        
+        st.markdown("### Generate Documents")
         mpdf_col1, mpdf_col2 = st.columns(2)
         with mpdf_col1:
+            st.write("**Master Candidate List** (Contains all posts above)")
             pdf_mlist = ElectionPDF()
-            pdf_mlist.candidate_list(f"Candidate List - {post_name}", st.session_state.main_candidates, election_year, is_class=False)
-            st.download_button("📥 Download Candidate List PDF", data=pdf_mlist.output(dest='S').encode('latin1'), file_name=f"Candidates_{post_name}.pdf")
+            pdf_mlist.consolidated_candidate_list("Consolidated Candidate List - Main Posts", st.session_state.all_main_posts, election_year, is_class=False)
+            st.download_button("📥 Download Master Main Posts List", data=pdf_mlist.output(dest='S').encode('latin1'), file_name="Master_MainPosts_List.pdf")
             
         with mpdf_col2:
-            pdf_mballot = ElectionPDF()
-            pdf_mballot.create_multiple_ballots(m_ballot_count, post_name, "", main_seats, st.session_state.main_candidates, election_year, poll_date_display, is_main_post=True)
-            st.download_button("🖨️ Download Ballot Papers PDF (2 per page)", data=pdf_mballot.output(dest='S').encode('latin1'), file_name=f"Ballots_{post_name}.pdf")
+            st.write(f"**Ballot Papers for {post_name}**")
+            m_ballot_count = st.number_input(f"No. of Ballots for {post_name}", min_value=1, max_value=2000, value=50, key="b_count_main")
+            if st.session_state.all_main_posts[post_name]['candidates']:
+                pdf_mballot = ElectionPDF()
+                pdf_mballot.create_multiple_ballots(m_ballot_count, post_name, "", main_seats, st.session_state.all_main_posts[post_name]['candidates'], election_year, poll_date_display, is_main_post=True)
+                st.download_button(f"🖨️ Download Ballots for {post_name}", data=pdf_mballot.output(dest='S').encode('latin1'), file_name=f"Ballots_{post_name}.pdf")
+            else:
+                st.warning("Add candidates to this post first to generate ballots.")
 
 # --- CUSTOM FOOTER ---
 st.markdown("<br><br><hr>", unsafe_allow_html=True)
