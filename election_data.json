@@ -1,0 +1,30 @@
+{
+  "2026-27": {
+    "poll_date": "14-Nov-2026",
+    "programs": {
+      "UG": ["B. Sc Mathematics", "B. Sc Physics"],
+      "PG": ["M. Com", "M. Sc Botany"]
+    },
+    "class_reps": {
+      "I B. Sc Mathematics": {
+        "seats": 2,
+        "candidates": [
+          {
+            "id": "cand_12345",
+            "roll_no": 1201,
+            "name": "FRANCIS THOMAS",
+            "gender": "Male",
+            "status": "Nominated"  // Can change to: "Withdrawn", "Elected", "Lost"
+          }
+        ]
+      }
+    },
+    "main_posts_config": [
+      {"post_name": "The Chairperson", "seats": 1},
+      {"post_name": "General Secretary", "seats": 1}
+    ],
+    "main_post_candidates": {
+      "The Chairperson": []
+    }
+  }
+}
