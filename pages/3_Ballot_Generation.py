@@ -27,12 +27,10 @@ class BallotPDF(FPDF):
     def generate_ballots(self, class_list, class_reps_data, year_str, poll_date_str, college_name):
         valid_classes = []
         
-        # Filter for classes that ACTUALLY require an election (more than 1 candidate in a gender)
         for cls in class_list:
             c_data = class_reps_data.get(cls, {})
             active_cands = [c for c in c_data.get("candidates", []) if c.get('status') == "Nominated"]
             
-            # Alphabetically sort candidates for ballot
             males = sorted([c for c in active_cands if c['gender'] == 'Male'], key=lambda x: x['name'])
             females = sorted([c for c in active_cands if c['gender'] == 'Female'], key=lambda x: x['name'])
             
@@ -43,7 +41,6 @@ class BallotPDF(FPDF):
                     "females": females
                 })
         
-        # Loop through each valid class and create exactly ONE sheet per class (with 2 identical ballots on it)
         for cls_info in valid_classes:
             self.add_page()
             
@@ -72,100 +69,121 @@ class BallotPDF(FPDF):
         elif contesting_males or contesting_females:
             display_seats = 1
 
-        self.set_font("Times", "", 12)
-        
         # ==========================================
         # LEFT SIDE: Counter Foil
         # ==========================================
         self.set_xy(10, 15 + y_offset)
-        self.cell(60, 6, "SL. No. ________", ln=True)
-        self.cell(60, 6, f"Election to College Union {year_str}", ln=True)
-        self.cell(60, 6, "Counter foil of Ballot Paper", ln=True)
+        self.set_font("Times", "", 10)
+        line_ht = 8 # Increased line spacing for counterfoil
         
-        self.cell(60, 6, "Name of the post: Class Representative", ln=True)
-        # Class Name boldly below the post name
-        self.set_font("Times", "B", 12)
-        self.cell(60, 6, f"({class_name})", ln=True)
-        self.set_font("Times", "", 12)
+        self.cell(65, line_ht, "SL. No. ________", ln=True)
+        self.cell(65, line_ht, f"Election to College Union {year_str}", ln=True)
+        self.cell(65, line_ht, "Counter foil of Ballot Paper", ln=True)
         
-        self.cell(60, 6, f"No. of Seats: {display_seats}", ln=True)
+        self.cell(65, line_ht, "Name of the post: Class Representative", ln=True)
+        self.set_font("Times", "B", 10)
+        self.cell(65, line_ht, f"({class_name})", ln=True)
+        self.set_font("Times", "", 10)
+        
+        self.cell(65, line_ht, f"No. of Seats: {display_seats}", ln=True)
         self.ln(2) 
         
         self.set_x(10)
-        self.cell(60, 6, "Name of the elector: ____________", ln=True)
+        self.cell(65, line_ht, "Name of the elector: _______________________", ln=True)
         self.set_x(10)
-        self.cell(60, 6, "Electoral Roll No.: ____________", ln=True)
+        self.cell(65, line_ht, "Electoral Roll No.:  _______________________", ln=True)
         self.set_x(10)
-        self.cell(60, 6, f"Date of poll: {poll_date_str}", ln=True)
+        self.cell(65, line_ht, f"Date of poll: {poll_date_str}", ln=True)
         
-        # Draw vertical perforation line separating counter foil and ballot
+        # Draw vertical perforation line (Moved right to 78 to prevent overlapping)
         self.set_line_width(0.5)
         for y in range(int(10 + y_offset), int(140 + y_offset), 4):
-            self.line(75, y, 75, y + 2)
+            self.line(78, y, 78, y + 2)
             
         # ==========================================
-        # RIGHT SIDE: Main Ballot
+        # RIGHT SIDE: Main Ballot Headers
         # ==========================================
         self.set_xy(85, 15 + y_offset)
+        self.set_font("Times", "", 10)
         self.cell(50, 5, "SL. No. ________")
         self.cell(60, 5, "Signature of the RO..................", ln=True, align="R")
         
         self.set_xy(85, 25 + y_offset)
-        self.set_font("Times", "", 12)
         self.cell(110, 5, college_name, ln=True, align="C")
         self.set_x(85)
         self.cell(110, 5, f"Election to College Union {year_str}", ln=True, align="C")
         self.set_x(85)
         
-        # Inline Bold formatting for Class Name on the Right Side (Left Aligned)
         str_start = "Name of the post: Class representative ("
         self.cell(self.get_string_width(str_start), 6, str_start)
-        self.set_font("Times", "B", 12)
+        self.set_font("Times", "B", 10)
         self.cell(self.get_string_width(class_name), 6, class_name)
-        self.set_font("Times", "", 12)
+        self.set_font("Times", "", 10)
         self.cell(self.get_string_width(")"), 6, ")", ln=True)
         
         self.set_x(85)
         self.cell(110, 6, f"No. of Seats: {display_seats}", ln=True, align="L")
         
+        # ==========================================
+        # RIGHT SIDE: Ballot Content (Font Size 12)
+        # ==========================================
         self.set_x(85)
         self.set_font("Times", "B", 12)
-        self.cell(110, 7, "BALLOT PAPER", ln=True, align="C")
+        self.cell(110, 8, "BALLOT PAPER", ln=True, align="C")
         self.set_x(85)
-        self.set_font("Times", "", 12)
+        self.set_font("Times", "", 10)
         self.multi_cell(110, 5, "(Vote by placing the mark 'X' against the name of the candidate for whom you vote)", align="C")
         self.ln(2)
         
-        # Candidate Table Header
         self.set_x(85)
         self.set_font("Times", "B", 12)
-        self.cell(25, 7, "Roll No", border=1, align="C")
-        self.cell(60, 7, "Name", border=1, align="C")
-        self.cell(25, 7, "Space", border=1, align="C")
+        self.cell(25, 8, "Roll No", border=1, align="C")
+        self.cell(60, 8, "Name", border=1, align="C")
+        self.cell(25, 8, "Space", border=1, align="C")
         self.ln()
         
-        self.set_font("Times", "B", 12)
-        row_height = 8 # Reduced slightly to ensure it perfectly fits half a page if 4+ candidates
+        row_height = 12 # Substantially increased row height for larger boxes
         
         if contesting_males:
             self.set_x(85)
-            self.cell(110, 6, "Class Representative Male", border=1, align="C")
+            self.set_font("Times", "B", 12)
+            self.cell(110, 8, "Class Representative Male", border=1, align="C")
             self.ln()
             for cand in males:
                 self.set_x(85)
+                self.set_font("Times", "B", 12)
                 self.cell(25, row_height, str(cand['roll_no']), border=1, align="C")
-                self.cell(60, row_height, str(cand['name']), border=1)
+                
+                # Auto-shrink logic for lengthy names inside font size 12
+                name_text = str(cand['name'])
+                font_sz = 12
+                self.set_font("Times", "B", font_sz)
+                while self.get_string_width(name_text) > 58 and font_sz > 6:
+                    font_sz -= 0.5
+                    self.set_font("Times", "B", font_sz)
+                    
+                self.cell(60, row_height, name_text, border=1)
                 self.cell(25, row_height, "", border=1)
                 self.ln()
                 
         if contesting_females:
             self.set_x(85)
-            self.cell(110, 6, "Class Representative Female", border=1, align="C")
+            self.set_font("Times", "B", 12)
+            self.cell(110, 8, "Class Representative Female", border=1, align="C")
             self.ln()
             for cand in females:
                 self.set_x(85)
+                self.set_font("Times", "B", 12)
                 self.cell(25, row_height, str(cand['roll_no']), border=1, align="C")
-                self.cell(60, row_height, str(cand['name']), border=1)
+                
+                name_text = str(cand['name'])
+                font_sz = 12
+                self.set_font("Times", "B", font_sz)
+                while self.get_string_width(name_text) > 58 and font_sz > 6:
+                    font_sz -= 0.5
+                    self.set_font("Times", "B", font_sz)
+                    
+                self.cell(60, row_height, name_text, border=1)
                 self.cell(25, row_height, "", border=1)
                 self.ln()
 
@@ -176,7 +194,6 @@ def generate_ballot_pdf_cached(class_list, cls_data_json, year_str, poll_date_st
     pdf = BallotPDF()
     pdf.generate_ballots(class_list, class_reps_data, year_str, poll_date_str, col_name)
     return pdf.output(dest='S').encode('latin1')
-
 
 # --- MAIN UI ---
 st.title("🖨️ Master Ballot Generation (Press Copy)")
