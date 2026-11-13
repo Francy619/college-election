@@ -1,6 +1,11 @@
 import streamlit as st
 import pandas as pd
+import os
+import io
+import json
 from fpdf import FPDF
+from openpyxl import Workbook
+from openpyxl.styles import Font, Alignment, Border, Side
 import db_utils
 
 st.set_page_config(page_title="Withdrawals & Final List", page_icon="🛑", layout="wide")
@@ -12,51 +17,193 @@ if not st.session_state.get("authenticated", False):
 db = db_utils.load_data()
 current_user = st.session_state.username
 
+# Tenant Data Loading
 if current_user not in db["users"]: st.stop()
 college_id = db["users"][current_user]["college_id"]
 if college_id not in db["colleges"]: st.stop()
 
 college_data = db["colleges"][college_id]
 college_name = college_data.get("college_name", "COLLEGE UNION ELECTION")
+logo_path = college_data.get("logo_path", "")
 
-class ElectionPDF(FPDF):
-    def consolidated_candidate_list(self, title, data_dict, year_str, college_name, is_class=True):
-        self.add_page()
-        self.set_font("Arial", "B", 16)
-        self.cell(0, 10, college_name, ln=True, align="C")
-        self.set_font("Arial", "B", 14)
-        self.cell(0, 10, f"College Union Election {year_str}", ln=True, align="C")
-        self.set_font("Arial", "B", 12)
-        self.cell(0, 10, title, ln=True, align="C")
-        self.ln(5)
+# --- PDF GENERATOR CLASS ---
+class FinalListPDF(FPDF):
+    def header(self):
+        # Draw Logo if exists
+        if hasattr(self, 'logo_path_val') and self.logo_path_val and os.path.exists(self.logo_path_val):
+            self.image(self.logo_path_val, 10, 8, w=20)
+            
+        self.set_font("Times", "B", 14)
+        self.cell(0, 8, getattr(self, 'college_name_val', ''), ln=True, align="C")
         
-        for heading, data in data_dict.items():
-            active_candidates = [c for c in data.get('candidates', []) if c.get('status') == "Nominated"]
-            if not active_candidates:
-                continue
-                
-            self.set_font("Arial", "BU", 11)
-            label = "Class" if is_class else "Post"
-            self.cell(0, 10, f"{label}: {heading} (Seats: {data['seats']})", ln=True, align="L")
-            
-            self.set_font("Arial", "B", 10)
-            self.cell(20, 8, "SL No", border=1, align="C")
-            self.cell(40, 8, "Electoral Roll No", border=1, align="C")
-            self.cell(90, 8, "Name of Candidate", border=1, align="C")
-            if is_class:
-                self.cell(40, 8, "Gender", border=1, align="C")
-            self.ln()
-            
-            self.set_font("Arial", "", 10)
-            for idx, cand in enumerate(active_candidates):
-                self.cell(20, 8, str(idx+1), border=1, align="C")
-                self.cell(40, 8, str(cand['roll_no']), border=1, align="C")
-                self.cell(90, 8, str(cand['name']), border=1)
-                if is_class:
-                    self.cell(40, 8, str(cand['gender']), border=1, align="C")
-                self.ln()
-            self.ln(5) 
+        self.cell(0, 8, f"College Union Election {getattr(self, 'year_str', '')}", ln=True, align="C")
+        
+        # Split heading to prevent overlap with logo
+        self.cell(0, 8, "FINAL LIST OF VALID NOMINATIONS OF", ln=True, align="C")
+        self.cell(0, 8, "CLASS REPRESENTATIVE ELECTION", ln=True, align="C")
+        
+        # Extra gap after the main headings (Category line removed as requested)
+        self.ln(10)
 
+    def draw_class_table(self, class_name, candidates, start_x, start_y):
+        # Class Name Heading - Centered
+        self.set_xy(start_x, start_y)
+        self.set_font("Times", "B", 14)
+        self.cell(90, 8, class_name, ln=False, align="C")
+        
+        # Table Header (with wrapped Electoral Roll No)
+        self.set_xy(start_x, start_y + 8)
+        self.set_font("Times", "B", 12)
+        
+        # Draw outer borders for header
+        self.rect(start_x, start_y + 8, 25, 12)       # Roll No box
+        self.rect(start_x + 25, start_y + 8, 50, 12)  # Name box
+        self.rect(start_x + 75, start_y + 8, 15, 12)  # Gender box
+        
+        # Draw text inside headers
+        self.set_xy(start_x, start_y + 8)
+        self.cell(25, 6, "Electoral", align="C")
+        self.cell(50, 12, "Name", align="C")
+        self.cell(15, 12, "Gender", align="C")
+        
+        self.set_xy(start_x, start_y + 14)
+        self.cell(25, 6, "Roll No.", align="C")
+        
+        # Table Data Rows
+        curr_y = start_y + 20
+        
+        for cand in candidates:
+            self.set_xy(start_x, curr_y)
+            self.set_font("Times", "", 12)
+            self.cell(25, 8, str(cand["roll_no"]), border=1, align="C")
+            
+            # Auto-shrink font logic for lengthy names
+            name_text = str(cand["name"])
+            font_sz = 12
+            self.set_font("Times", "", font_sz)
+            while self.get_string_width(name_text) > 48 and font_sz > 5:
+                font_sz -= 0.5
+                self.set_font("Times", "", font_sz)
+                
+            self.cell(50, 8, name_text, border=1)
+            
+            self.set_font("Times", "", 12)
+            g = "M" if cand["gender"] == "Male" else "F"
+            self.cell(15, 8, g, border=1, align="C")
+            curr_y += 8
+            
+        return curr_y
+
+
+# --- CACHED FILE GENERATORS (For Instant 1-Click Downloads) ---
+@st.cache_data(show_spinner=False)
+def get_final_excel_bytes_cached(col_name, yr_str, filtered_cls, cls_data_json):
+    cls_data = json.loads(cls_data_json)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Final List"
+
+    font_heading = Font(name="Times New Roman", size=14, bold=True)
+    font_header = Font(name="Times New Roman", size=12, bold=True)
+    font_data = Font(name="Times New Roman", size=12)
+    align_center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    align_left = Alignment(horizontal="left", vertical="center", shrink_to_fit=True)
+    border_thin = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+
+    ws.column_dimensions['A'].width = 12
+    ws.column_dimensions['B'].width = 30
+    ws.column_dimensions['C'].width = 10
+    ws.column_dimensions['D'].width = 5 
+    ws.column_dimensions['E'].width = 12
+    ws.column_dimensions['F'].width = 30
+    ws.column_dimensions['G'].width = 10
+
+    ws.merge_cells('A1:G1'); ws['A1'] = col_name; ws['A1'].font = font_heading; ws['A1'].alignment = align_center
+    ws.merge_cells('A2:G2'); ws['A2'] = f"College Union Election {yr_str}"; ws['A2'].font = font_heading; ws['A2'].alignment = align_center
+    ws.merge_cells('A3:G3'); ws['A3'] = "FINAL LIST OF VALID NOMINATIONS OF"; ws['A3'].font = font_heading; ws['A3'].alignment = align_center
+    ws.merge_cells('A4:G4'); ws['A4'] = "CLASS REPRESENTATIVE ELECTION"; ws['A4'].font = font_heading; ws['A4'].alignment = align_center
+
+    curr_row = 6
+    max_used_row = 6
+    pairs = [filtered_cls[i:i+2] for i in range(0, len(filtered_cls), 2)]
+
+    for pair in pairs:
+        left_class = pair[0]
+        right_class = pair[1] if len(pair) > 1 else None
+
+        left_cands = sorted([c for c in cls_data[left_class]["candidates"] if c.get("status") == "Nominated"], key=lambda x: x["name"])
+        right_cands = sorted([c for c in cls_data[right_class]["candidates"] if c.get("status") == "Nominated"], key=lambda x: x["name"]) if right_class else []
+
+        ws.merge_cells(start_row=curr_row, start_column=1, end_row=curr_row, end_column=3)
+        c_left = ws.cell(row=curr_row, column=1, value=left_class); c_left.font = font_heading; c_left.alignment = align_center
+        ws.cell(row=curr_row+1, column=1, value="Electoral\nRoll No.").font = font_header; ws.cell(row=curr_row+1, column=1).alignment = align_center; ws.cell(row=curr_row+1, column=1).border = border_thin
+        ws.cell(row=curr_row+1, column=2, value="Name").font = font_header; ws.cell(row=curr_row+1, column=2).alignment = align_center; ws.cell(row=curr_row+1, column=2).border = border_thin
+        ws.cell(row=curr_row+1, column=3, value="Gender").font = font_header; ws.cell(row=curr_row+1, column=3).alignment = align_center; ws.cell(row=curr_row+1, column=3).border = border_thin
+
+        r_left = curr_row + 2
+        for c in left_cands:
+            ws.cell(row=r_left, column=1, value=c["roll_no"]).font = font_data; ws.cell(row=r_left, column=1).alignment = align_center; ws.cell(row=r_left, column=1).border = border_thin
+            ws.cell(row=r_left, column=2, value=c["name"]).font = font_data; ws.cell(row=r_left, column=2).alignment = align_left; ws.cell(row=r_left, column=2).border = border_thin
+            ws.cell(row=r_left, column=3, value="M" if c["gender"]=="Male" else "F").font = font_data; ws.cell(row=r_left, column=3).alignment = align_center; ws.cell(row=r_left, column=3).border = border_thin
+            r_left += 1
+
+        r_right = curr_row + 2
+        if right_class:
+            ws.merge_cells(start_row=curr_row, start_column=5, end_row=curr_row, end_column=7)
+            c_right = ws.cell(row=curr_row, column=5, value=right_class); c_right.font = font_heading; c_right.alignment = align_center
+            ws.cell(row=curr_row+1, column=5, value="Electoral\nRoll No.").font = font_header; ws.cell(row=curr_row+1, column=5).alignment = align_center; ws.cell(row=curr_row+1, column=5).border = border_thin
+            ws.cell(row=curr_row+1, column=6, value="Name").font = font_header; ws.cell(row=curr_row+1, column=6).alignment = align_center; ws.cell(row=curr_row+1, column=6).border = border_thin
+            ws.cell(row=curr_row+1, column=7, value="Gender").font = font_header; ws.cell(row=curr_row+1, column=7).alignment = align_center; ws.cell(row=curr_row+1, column=7).border = border_thin
+            for c in right_cands:
+                ws.cell(row=r_right, column=5, value=c["roll_no"]).font = font_data; ws.cell(row=r_right, column=5).alignment = align_center; ws.cell(row=r_right, column=5).border = border_thin
+                ws.cell(row=r_right, column=6, value=c["name"]).font = font_data; ws.cell(row=r_right, column=6).alignment = align_left; ws.cell(row=r_right, column=6).border = border_thin
+                ws.cell(row=r_right, column=7, value="M" if c["gender"]=="Male" else "F").font = font_data; ws.cell(row=r_right, column=7).alignment = align_center; ws.cell(row=r_right, column=7).border = border_thin
+                r_right += 1
+
+        curr_row = max(r_left, r_right) + 2
+        max_used_row = max(max_used_row, curr_row)
+
+    for r in range(1, max_used_row): ws.row_dimensions[r].height = 20
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    return buffer.getvalue()
+
+@st.cache_data(show_spinner=False)
+def get_final_pdf_bytes_cached(col_name, yr_str, filtered_cls, cls_data_json, logo_p):
+    cls_data = json.loads(cls_data_json)
+    pdf = FinalListPDF()
+    pdf.college_name_val = col_name
+    pdf.year_str = yr_str
+    pdf.logo_path_val = logo_p
+    pdf.add_page()
+    
+    pairs = [filtered_cls[i:i+2] for i in range(0, len(filtered_cls), 2)]
+    
+    for pair in pairs:
+        left_class = pair[0]
+        right_class = pair[1] if len(pair) > 1 else None
+        
+        left_cands = sorted([c for c in cls_data[left_class]["candidates"] if c.get("status") == "Nominated"], key=lambda x: x["name"])
+        right_cands = sorted([c for c in cls_data[right_class]["candidates"] if c.get("status") == "Nominated"], key=lambda x: x["name"]) if right_class else []
+        
+        max_cands = max(len(left_cands), len(right_cands))
+        estimated_height = 20 + (max_cands * 8)
+        
+        if pdf.get_y() + estimated_height > 270:
+            pdf.add_page()
+            
+        start_y = pdf.get_y()
+        end_y_left = pdf.draw_class_table(left_class, left_cands, 10, start_y)
+        
+        end_y_right = start_y
+        if right_class:
+            end_y_right = pdf.draw_class_table(right_class, right_cands, 110, start_y)
+            
+        pdf.set_y(max(end_y_left, end_y_right) + 10)
+        
+    return pdf.output(dest='S').encode('latin1')
+
+# --- MAIN UI ---
 st.title("🛑 Scrutiny & Withdrawals")
 st.markdown("Manage candidate withdrawals and generate the final list of valid contestants for the ballot.")
 
@@ -72,77 +219,160 @@ if "class_reps" not in year_data or not year_data["class_reps"]:
     st.info("No class representatives have been nominated for this year yet.")
     st.stop()
 
-flat_candidates = []
-for c_name, c_data in year_data["class_reps"].items():
-    for cand in c_data["candidates"]:
-        flat_candidates.append({
-            "ID": cand["id"],
-            "Class": c_name,
-            "Roll No": cand["roll_no"],
-            "Name": cand["name"],
-            "Gender": cand["gender"],
-            "Status": cand.get("status", "Nominated")
-        })
+class_reps_data = year_data["class_reps"]
 
-if not flat_candidates:
-    st.info("No candidates found.")
-    st.stop()
+# --- 1. FILTER CONTROLS ---
+st.markdown("### 1. Filter Classes")
+c1, c2, c3 = st.columns(3)
 
-df = pd.DataFrame(flat_candidates)
-st.markdown("### Manage Candidate Status")
-st.write("Double-click a cell in the **Status** column to change a candidate from `Nominated` to `Withdrawn`.")
-
-edited_df = st.data_editor(
-    df,
-    column_config={
-        "ID": None,
-        "Class": st.column_config.TextColumn(disabled=True),
-        "Roll No": st.column_config.NumberColumn(disabled=True),
-        "Name": st.column_config.TextColumn(disabled=True),
-        "Gender": st.column_config.TextColumn(disabled=True),
-        "Status": st.column_config.SelectboxColumn("Status", options=["Nominated", "Withdrawn"], required=True)
-    },
-    use_container_width=True,
-    hide_index=True,
-    key="withdrawal_editor"
-)
-
-if st.button("💾 Save Status Changes", type="primary"):
-    for index, row in edited_df.iterrows():
-        cand_id = row["ID"]
-        class_name = row["Class"]
-        new_status = row["Status"]
+with c1:
+    lvl_filter = st.selectbox("Course Level", ["All", "UG", "PG"])
+with c2:
+    yr_filter = st.selectbox("Year", ["All", "I", "II", "III", "IV"])
+with c3:
+    # Dynamically build program list based on Level filter
+    progs = ["All"]
+    if lvl_filter == "UG":
+        progs.extend(year_data.get("programs", {}).get("UG", []))
+    elif lvl_filter == "PG":
+        progs.extend(year_data.get("programs", {}).get("PG", []))
+    else:
+        progs.extend(year_data.get("programs", {}).get("UG", []))
+        progs.extend(year_data.get("programs", {}).get("PG", []))
         
-        for c in year_data["class_reps"][class_name]["candidates"]:
-            if c["id"] == cand_id:
-                c["status"] = new_status
-                break
-    db_utils.save_data(db)
-    st.success("Candidate statuses updated successfully!")
-    st.rerun()
+    prog_filter = st.selectbox("Program / Class", progs)
 
+# Apply Filter Logic
+filtered_classes = []
+for cls in class_reps_data.keys():
+    parts = cls.split(" ", 1)
+    if len(parts) == 2:
+        c_yr, c_prog = parts
+    else:
+        continue
+        
+    if yr_filter != "All" and c_yr != yr_filter: continue
+    if prog_filter != "All" and c_prog != prog_filter: continue
+    if lvl_filter != "All":
+        if c_prog not in year_data.get("programs", {}).get(lvl_filter, []):
+            continue
+            
+    filtered_classes.append(cls)
+
+filtered_classes.sort()
+
+# --- 2. MANAGE WITHDRAWALS ---
 st.markdown("---")
-st.markdown("### 🖨️ Final List Generation")
-total_noms = len(df)
-withdrawn_count = len(df[df["Status"] == "Withdrawn"])
-active_count = total_noms - withdrawn_count
+st.markdown("### 2. Manage Candidate Status")
+if not filtered_classes:
+    st.info("No classes match the selected filters.")
+else:
+    flat_candidates = []
+    for cls in filtered_classes:
+        for cand in class_reps_data[cls]["candidates"]:
+            flat_candidates.append({
+                "ID": cand["id"],
+                "Class": cls,
+                "Roll No": cand["roll_no"],
+                "Name": cand["name"],
+                "Gender": cand["gender"],
+                "Status": cand.get("status", "Nominated")
+            })
 
-col1, col2, col3 = st.columns(3)
-col1.metric("Total Nominations", total_noms)
-col2.metric("Total Withdrawn", withdrawn_count)
-col3.metric("Final Active Candidates", active_count)
+    if not flat_candidates:
+        st.info("No candidates found in the filtered classes.")
+    else:
+        st.write("Double-click a cell in the **Status** column to change a candidate from `Nominated` to `Withdrawn`.")
+        df = pd.DataFrame(flat_candidates)
+        
+        edited_df = st.data_editor(
+            df,
+            column_config={
+                "ID": None,
+                "Class": st.column_config.TextColumn(disabled=True),
+                "Roll No": st.column_config.NumberColumn(disabled=True),
+                "Name": st.column_config.TextColumn(disabled=True),
+                "Gender": st.column_config.TextColumn(disabled=True),
+                "Status": st.column_config.SelectboxColumn("Status", options=["Nominated", "Withdrawn"], required=True)
+            },
+            use_container_width=True,
+            hide_index=True,
+            key="withdrawal_editor"
+        )
 
-pdf_list = ElectionPDF()
-pdf_list.consolidated_candidate_list(
-    "Final Valid Candidate List - Class Representatives", 
-    year_data["class_reps"], 
-    selected_year, 
-    college_name,
-    is_class=True
-)
+        if st.button("💾 Save Status Changes", type="primary"):
+            for index, row in edited_df.iterrows():
+                cand_id = row["ID"]
+                class_name = row["Class"]
+                new_status = row["Status"]
+                
+                for c in year_data["class_reps"][class_name]["candidates"]:
+                    if c["id"] == cand_id:
+                        c["status"] = new_status
+                        break
+            db_utils.save_data(db)
+            st.success("Candidate statuses updated successfully!")
+            st.rerun()
 
-st.download_button(
-    label="📥 Download Final Valid Candidate List (PDF)", 
-    data=pdf_list.output(dest='S').encode('latin1'), 
-    file_name=f"Final_Class_Reps_List_{selected_year}.pdf"
-)
+# --- 3. EXPORT FINAL LIST ---
+st.markdown("---")
+st.markdown("### 3. 🖨️ Final List Generation")
+st.write("Exports include **only active (Nominated)** candidates. Withdrawn candidates are automatically excluded.")
+
+tab1, tab2 = st.tabs(["📄 Yearwise/Filtered Export", "📚 Complete College Export"])
+
+cls_data_json_str = json.dumps(class_reps_data)
+all_classes_sorted = sorted(list(class_reps_data.keys()))
+
+with tab1:
+    if not filtered_classes:
+        st.info("No active candidates to export for the current filter.")
+    else:
+        st.caption(f"Exporting {len(filtered_classes)} selected class(es) based on your filters.")
+        c_exp1, c_exp2 = st.columns(2)
+        
+        with c_exp1:
+            excel_bytes_filtered = get_final_excel_bytes_cached(college_name, selected_year, filtered_classes, cls_data_json_str)
+            st.download_button(
+                label="📥 Download Filtered Excel (.xlsx)", 
+                data=excel_bytes_filtered, 
+                file_name=f"Final_List_Filtered.xlsx", 
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+            
+        with c_exp2:
+            pdf_bytes_filtered = get_final_pdf_bytes_cached(college_name, selected_year, filtered_classes, cls_data_json_str, logo_path)
+            st.download_button(
+                label="📥 Download Filtered PDF", 
+                data=pdf_bytes_filtered, 
+                file_name=f"Final_List_Filtered.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+                type="primary"
+            )
+
+with tab2:
+    st.caption("Exporting the master list for ALL classes across the entire college.")
+    c_exp3, c_exp4 = st.columns(2)
+    
+    with c_exp3:
+        excel_bytes_all = get_final_excel_bytes_cached(college_name, selected_year, all_classes_sorted, cls_data_json_str)
+        st.download_button(
+            label="📥 Download Complete Excel (.xlsx)", 
+            data=excel_bytes_all, 
+            file_name=f"Final_List_Complete_{selected_year}.xlsx", 
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
+        
+    with c_exp4:
+        pdf_bytes_all = get_final_pdf_bytes_cached(college_name, selected_year, all_classes_sorted, cls_data_json_str, logo_path)
+        st.download_button(
+            label="📥 Download Complete PDF", 
+            data=pdf_bytes_all, 
+            file_name=f"Final_List_Complete_{selected_year}.pdf",
+            mime="application/pdf",
+            use_container_width=True,
+            type="primary"
+        )
