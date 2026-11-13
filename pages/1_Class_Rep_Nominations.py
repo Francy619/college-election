@@ -71,12 +71,26 @@ class NominationPDF(FPDF):
         
         # Table Data Rows
         curr_y = start_y + 20
-        self.set_font("Times", "", 12)
         
         for cand in candidates:
             self.set_xy(start_x, curr_y)
+            self.set_font("Times", "", 12) # Reset font to 12 for Roll No
             self.cell(25, 8, str(cand["roll_no"]), border=1, align="C")
-            self.cell(50, 8, str(cand["name"]), border=1)
+            
+            # --- AUTO-SHRINK FONT LOGIC FOR LENGTHY NAMES ---
+            name_text = str(cand["name"])
+            font_sz = 12
+            self.set_font("Times", "", font_sz)
+            
+            # 48 is the max width inside the 50-width cell (leaves 1 unit padding on each side)
+            while self.get_string_width(name_text) > 48 and font_sz > 5:
+                font_sz -= 0.5
+                self.set_font("Times", "", font_sz)
+                
+            self.cell(50, 8, name_text, border=1)
+            # ------------------------------------------------
+            
+            self.set_font("Times", "", 12) # Reset font to 12 for Gender
             g = "M" if cand["gender"] == "Male" else "F"
             self.cell(15, 8, g, border=1, align="C")
             curr_y += 8
@@ -95,7 +109,8 @@ def generate_excel_report(col_name, yr_str, filtered_cls, cls_data):
     font_data = Font(name="Times New Roman", size=12)
     
     align_center = Alignment(horizontal="center", vertical="center", wrap_text=True)
-    align_left = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    # Added shrink_to_fit=True so lengthy names shrink to fit the cell width exactly like the PDF
+    align_left = Alignment(horizontal="left", vertical="center", shrink_to_fit=True)
     
     border_thin = Border(
         left=Side(style='thin'), right=Side(style='thin'),
