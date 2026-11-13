@@ -6,8 +6,7 @@ DATA_FILE = "election_data.json"
 def load_data():
     """
     Loads the election data from the JSON file. 
-    If the file doesn't exist, is empty, or gets corrupted, 
-    it safely returns the base multi-tenant structure.
+    Safely returns the base multi-tenant structure if the file is missing or corrupted.
     """
     base_structure = {
         "users": {}, 
@@ -21,7 +20,7 @@ def load_data():
         with open(DATA_FILE, "r") as f:
             data = json.load(f)
             
-            # Ensure core dictionaries exist to prevent KeyError on fresh loads
+            # Ensure core dictionaries exist (Auto-repairs legacy databases)
             if "users" not in data:
                 data["users"] = {}
             if "colleges" not in data:
@@ -30,13 +29,11 @@ def load_data():
             return data
             
     except json.JSONDecodeError:
-        # Failsafe: If the JSON file breaks during a save, reset to safe defaults
         return base_structure
 
 def save_data(data):
     """
-    Saves the entire dictionary back to the JSON file with proper formatting.
+    Saves the entire dictionary back to the JSON file.
     """
     with open(DATA_FILE, "w") as f:
         json.dump(data, f, indent=4)
-
