@@ -77,28 +77,29 @@ class BallotPDF(FPDF):
         # ==========================================
         # LEFT SIDE: Counter Foil
         # ==========================================
-        self.set_xy(10, 12 + y_offset)
+        # Shifted X to 15 for a wider left margin
+        self.set_xy(15, 12 + y_offset)
         self.set_font("Times", "", 8) 
         line_ht = 8 
         
-        self.cell(65, line_ht, "SL. No. __________________", ln=True)
-        self.cell(65, line_ht, f"Election to College Union {year_str}", ln=True)
+        self.cell(60, line_ht, "SL. No. __________________", ln=True)
+        self.cell(60, line_ht, f"Election to College Union {year_str}", ln=True)
         self.set_font("Times", "B", 8)
-        self.cell(65, line_ht, "Counter foil of Ballot Paper", ln=True)
+        self.cell(60, line_ht, "Counter foil of Ballot Paper", ln=True)
         self.ln(3)
         
         self.set_font("Times", "", 8)
-        self.cell(65, line_ht, "Name of the post: Class Representative", ln=True)
+        self.cell(60, line_ht, "Name of the post: Class Representative", ln=True)
         self.set_font("Times", "B", 9) 
-        self.cell(65, line_ht, f"({class_name})", ln=True)
+        self.cell(60, line_ht, f"({class_name})", ln=True)
         self.set_font("Times", "", 8)
         
-        self.cell(65, line_ht, f"No. of Seats: {display_seats}", ln=True)
+        self.cell(60, line_ht, f"No. of Seats: {display_seats}", ln=True)
         self.ln(5)
         
         line_ht_btm = 7
-        self.cell(65, line_ht_btm, "Name of the elector: ___________________", ln=True)
-        self.cell(65, line_ht_btm, "Electoral Roll No. : ___________________", ln=True)
+        self.cell(60, line_ht_btm, "Name of the elector: ___________________", ln=True)
+        self.cell(60, line_ht_btm, "Electoral Roll No. : ___________________", ln=True)
         
         # Draw vertical perforation line (Positioned at 78)
         self.set_line_width(0.4)
@@ -149,9 +150,8 @@ class BallotPDF(FPDF):
         self.cell(110, 5, "(Vote by placing the mark 'X' against the name of the candidate for whom you vote)", ln=True, align="C")
         self.ln(3)
         
-        # Adjusted Column Widths: 20 (Roll) + 60 (Name) + 30 (Space) = 110mm total
         self.set_x(85)
-        self.set_font("Times", "B", 10) # Reduced to 10 so headers fit perfectly
+        self.set_font("Times", "B", 10)
         self.cell(20, 8, "Roll No", border=1, align="C")
         self.cell(60, 8, "Name of the Candidate", border=1, align="C")
         self.cell(30, 8, "Space for Mark", border=1, align="C")
@@ -173,7 +173,6 @@ class BallotPDF(FPDF):
                 name_text = str(cand['name'])
                 font_sz = 12
                 self.set_font("Times", "B", font_sz)
-                # Adjusted max width to 58 to fit inside the new 60mm column
                 while self.get_string_width(name_text) > 58 and font_sz > 6:
                     font_sz -= 0.5
                     self.set_font("Times", "B", font_sz)
@@ -207,8 +206,8 @@ class BallotPDF(FPDF):
         # ABSOLUTE BOTTOM POSITIONING (Date of Poll)
         # ==========================================
         self.set_font("Times", "", 9)
-        self.set_xy(10, 135 + y_offset)
-        self.cell(65, 5, f"Date of poll: {poll_date_str}")
+        self.set_xy(15, 135 + y_offset) # Also shifted left margin here to match
+        self.cell(60, 5, f"Date of poll: {poll_date_str}")
         
 
 # --- CACHED PDF GENERATOR ---
