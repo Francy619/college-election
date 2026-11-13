@@ -3,30 +3,25 @@ import pandas as pd
 from fpdf import FPDF
 import json
 import os
+import db_utils
 
+# --- PAGE CONFIG ---
 st.set_page_config(page_title="Ballot Generation", page_icon="🖨️", layout="wide")
 
+# --- SECURITY: CHECK IF LOGGED IN ---
 if not st.session_state.get("authenticated", False):
     st.warning("🔒 Please log in from the Home page to access this module.")
     st.stop()
 
 current_user = st.session_state.username
-DATA_FILE = "election_data.json"
 
-def load_data():
-    if not os.path.exists(DATA_FILE) or os.path.getsize(DATA_FILE) == 0:
-        return {}
-    try:
-        with open(DATA_FILE, "r") as f:
-            return json.load(f)
-    except json.JSONDecodeError:
-        return {}
-
-db = load_data()
+# Load data using central utility
+db = db_utils.load_data()
 user_profile = db.get("users", {}).get(current_user, {})
 college_name = user_profile.get("college_name", "COLLEGE UNION ELECTION")
 college_data = db.get(current_user, {})
 
+# --- PDF GENERATION CLASS ---
 class BallotPDF(FPDF):
     def create_multiple_ballots(self, count, post_name, class_name, seats, candidates, year_str, poll_date_str, college_name, is_main_post=False):
         for idx in range(count):
@@ -41,38 +36,60 @@ class BallotPDF(FPDF):
             self._draw_single_ballot(y_offset, post_name, class_name, seats, candidates, year_str, poll_date_str, college_name, is_main_post)
 
     def _draw_single_ballot(self, y_offset, post_name, class_name, seats, candidates, year_str, poll_date_str, college_name, is_main_post):
+        # 1. Calculate Dynamic Seat Count based on contesting genders
+        display_seats = seats
+        if not is_main_post:
+            active_cands = [c for c in candidates if c.get('status') == "Nominated"]
+            males = [c for c in active_cands if c['gender'] == 'Male']
+            females = [c for c in active_cands if c['gender'] == 'Female']
+            
+            contesting_males = len(males) > 1
+            contesting_females = len(females) > 1
+            
+            if contesting_males and contesting_females:
+                display_seats = 2
+            elif contesting_males or contesting_females:
+                display_seats = 1
+
         self.set_font("Arial", "", 10)
+        
+        # --- COUNTER FOIL (LEFT) ---
+        # Increased line spacing (cell height from 5 to 7)
         self.set_xy(10, 15 + y_offset)
         self.set_font("Arial", "B", 10)
-        self.cell(60, 5, "SL. No. ________", ln=True)
+        self.cell(60, 7, "SL. No. ________", ln=True)
         self.set_font("Arial", "", 9)
-        self.cell(60, 5, f"Election to College Union {year_str}", ln=True)
+        self.cell(60, 7, f"Election to College Union {year_str}", ln=True)
         self.set_font("Arial", "B", 9)
-        self.cell(60, 5, "Counter foil of Ballot Paper", ln=True)
+        self.cell(60, 7, "Counter foil of Ballot Paper", ln=True)
         self.set_font("Arial", "", 9)
         
         post_disp = post_name if is_main_post else f"{post_name} ({class_name})"
-        self.multi_cell(60, 5, f"Name of the post: {post_disp}")
+        self.multi_cell(60, 7, f"Name of the post: {post_disp}")
         self.set_x(10)
-        self.cell(60, 5, f"No. of Seats: {seats}", ln=True)
-        self.ln(2)
+        self.cell(60, 7, f"No. of Seats: {display_seats}", ln=True)
+        
+        # Extra line break for better spacing
+        self.ln(3) 
+        
         self.set_x(10)
-        self.cell(60, 5, "Name of the elector: ____________", ln=True)
+        self.cell(60, 7, "Name of the elector: ____________", ln=True)
         if not is_main_post:
             self.set_x(10)
-            self.cell(60, 5, f"Class: {class_name}", ln=True)
+            self.cell(60, 7, f"Class: {class_name}", ln=True)
         self.set_x(10)
-        self.cell(60, 5, "Electoral Roll No.: ____________", ln=True)
+        self.cell(60, 7, "Electoral Roll No.: ____________", ln=True)
         self.set_x(10)
-        self.cell(60, 5, f"Date of poll: {poll_date_str}", ln=True)
+        self.cell(60, 7, f"Date of poll: {poll_date_str}", ln=True)
         
+        # --- VERTICAL CUT LINE ---
         self.set_line_width(0.5)
         for y in range(int(10 + y_offset), int(140 + y_offset), 4):
             self.line(75, y, 75, y + 2)
             
-        self.set_font("Arial", "", 8)
-        self.text(77, 135 + y_offset, "Cut here.........................................................")
+        # Note: "Cut here" text removed completely
         
+        # --- BALLOT PAPER (RIGHT) ---
         self.set_xy(85, 15 + y_offset)
         self.set_font("Arial", "B", 10)
         self.cell(50, 5, "SL. No. ________")
@@ -87,7 +104,7 @@ class BallotPDF(FPDF):
         self.set_font("Arial", "B", 10)
         self.multi_cell(110, 5, f"Name of the post: {post_disp}", align="C")
         self.set_x(85)
-        self.cell(110, 5, f"No. of Seats: {seats}", ln=True, align="C")
+        self.cell(110, 5, f"No. of Seats: {display_seats}", ln=True, align="C") # Updated to dynamic seats
         self.set_x(85)
         self.set_font("Arial", "B", 12)
         self.cell(110, 8, "BALLOT PAPER", ln=True, align="C")
@@ -96,6 +113,7 @@ class BallotPDF(FPDF):
         self.multi_cell(110, 4, "(Vote by placing the mark 'X' against the name of the candidate for whom you vote)", align="C")
         self.ln(3)
         
+        # Table Headers
         self.set_x(85)
         self.set_font("Arial", "B", 10)
         self.cell(25, 8, "Roll No", border=1, align="C")
@@ -103,6 +121,7 @@ class BallotPDF(FPDF):
         self.cell(25, 8, "Space", border=1, align="C")
         self.ln()
         
+        # Table Rows
         self.set_font("Arial", "B", 10)
         row_height = 10
         
@@ -141,6 +160,7 @@ class BallotPDF(FPDF):
                     self.cell(25, row_height, "", border=1)
                     self.ln()
 
+# --- HEADER ---
 st.title("🖨️ Ballot Paper Generation")
 
 if not college_data:
@@ -195,9 +215,10 @@ with tab2:
             males = [c for c in active_cands if c['gender'] == 'Male']
             females = [c for c in active_cands if c['gender'] == 'Female']
             
+            # Print only if there's a contest in at least one gender
             if len(males) > 1 or len(females) > 1:
                 master_pdf.create_multiple_ballots(
-                    count=2,
+                    count=2, # Prints 1 A4 sheet (2 ballots) per contested class
                     post_name="Class representative",
                     class_name=c_name,
                     seats=c_data["seats"],
@@ -217,4 +238,4 @@ with tab2:
                 file_name=f"Master_Consolidated_Ballots_{selected_year}.pdf"
             )
         else:
-            st.warning("No contested classes found.")
+            st.warning("No contested classes found across the college.")
