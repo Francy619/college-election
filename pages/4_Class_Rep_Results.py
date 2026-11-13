@@ -1,8 +1,7 @@
 import streamlit as st
 import pandas as pd
 from fpdf import FPDF
-import json
-import os
+import db_utils
 
 st.set_page_config(page_title="Class Rep Results", page_icon="🏆", layout="wide")
 
@@ -10,26 +9,15 @@ if not st.session_state.get("authenticated", False):
     st.warning("🔒 Please log in from the Home page to access this module.")
     st.stop()
 
+db = db_utils.load_data()
 current_user = st.session_state.username
-DATA_FILE = "election_data.json"
 
-def load_data():
-    if not os.path.exists(DATA_FILE) or os.path.getsize(DATA_FILE) == 0:
-        return {}
-    try:
-        with open(DATA_FILE, "r") as f:
-            return json.load(f)
-    except json.JSONDecodeError:
-        return {}
+if current_user not in db["users"]: st.stop()
+college_id = db["users"][current_user]["college_id"]
+if college_id not in db["colleges"]: st.stop()
 
-def save_data(data):
-    with open(DATA_FILE, "w") as f:
-        json.dump(data, f, indent=4)
-
-db = load_data()
-user_profile = db.get("users", {}).get(current_user, {})
-college_name = user_profile.get("college_name", "COLLEGE UNION ELECTION")
-college_data = db.get(current_user, {})
+college_data = db["colleges"][college_id]
+college_name = college_data.get("college_name", "COLLEGE UNION ELECTION")
 
 class ResultsPDF(FPDF):
     def elected_candidates_list(self, title, data_dict, year_str, college_name):
@@ -42,14 +30,11 @@ class ResultsPDF(FPDF):
         self.cell(0, 10, title, ln=True, align="C")
         self.ln(5)
         
-        has_elected_records = False
-        
         for class_name, data in data_dict.items():
             elected_cands = [c for c in data.get('candidates', []) if c.get('status') == "Elected"]
             if not elected_cands:
                 continue
                 
-            has_elected_records = True
             self.set_font("Arial", "BU", 11)
             self.cell(0, 10, f"Class: {class_name}", ln=True, align="L")
             
@@ -71,13 +56,13 @@ class ResultsPDF(FPDF):
 
 st.title("🏆 Class Representative Election Results")
 
-if not college_data:
+if "election_years" not in college_data or not college_data["election_years"]:
     st.warning("No election data found.")
     st.stop()
 
-available_years = list(college_data.keys())
+available_years = list(college_data["election_years"].keys())
 selected_year = st.selectbox("Select Election Year", available_years, index=len(available_years)-1)
-year_data = college_data[selected_year]
+year_data = college_data["election_years"][selected_year]
 
 classes_list = list(year_data.get("class_reps", {}).keys())
 if not classes_list:
@@ -111,7 +96,7 @@ else:
             for c in year_data["class_reps"][selected_class]["candidates"]:
                 if c["id"] in updated_statuses:
                     c["status"] = updated_statuses[c["id"]]
-            save_data(db)
+            db_utils.save_data(db)
             st.success(f"Results saved!")
             st.rerun()
 
