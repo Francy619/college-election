@@ -1,12 +1,1 @@
-{
-  "users": {
-    "admin": {
-      "password": "password123",
-      "recovery_hint": "college"
-    }
-  },
-  "2026-27": {
-    "poll_date": "",
-    "programs": { ... }
-  }
-}
+{}
