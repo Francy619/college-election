@@ -4,6 +4,8 @@ import uuid
 import os
 import io
 from fpdf import FPDF
+from openpyxl import Workbook
+from openpyxl.styles import Font, Alignment, Border, Side
 import db_utils
 
 st.set_page_config(page_title="Class Rep Nominations", page_icon="📝", layout="wide")
@@ -31,39 +33,133 @@ class NominationPDF(FPDF):
         if logo_path and os.path.exists(logo_path):
             self.image(logo_path, 10, 8, w=20)
             
-        self.set_font("Arial", "B", 14)
+        self.set_font("Times", "B", 14)
         self.cell(0, 8, college_name, ln=True, align="C")
         
-        self.set_font("Arial", "B", 12)
-        self.cell(0, 6, f"College Union Election {self.year_str}", ln=True, align="C")
+        self.cell(0, 8, f"College Union Election {self.year_str}", ln=True, align="C")
         
-        self.set_font("Arial", "B", 11)
-        self.cell(0, 6, "LIST OF VALID NOMINATIONS OF CLASS REPRESENTATIVE ELECTION", ln=True, align="C")
+        self.cell(0, 8, "LIST OF VALID NOMINATIONS OF CLASS REPRESENTATIVE ELECTION", ln=True, align="C")
         
+        self.cell(0, 8, f"Category: {self.category_str}", ln=True, align="C")
+        
+        # Added extra gap after the main headings
+        self.ln(10)
 
     def draw_class_table(self, class_name, candidates, start_x, start_y):
+        # Class Name Heading
         self.set_xy(start_x, start_y)
-        self.set_font("Arial", "B", 10)
-        self.cell(90, 6, class_name, ln=False, align="L")
+        self.set_font("Times", "B", 14)
+        self.cell(90, 8, class_name, ln=False, align="L")
         
-        self.set_xy(start_x, start_y + 6)
-        self.set_font("Arial", "B", 9)
-        self.cell(20, 6, "Electrol Roll No", border=1, align="C")
-        self.cell(55, 6, "Name", border=1, align="C")
-        self.cell(15, 6, "Gender", border=1, align="C")
+        # Table Header (with wrapped Electoral Roll No)
+        self.set_xy(start_x, start_y + 8)
+        self.set_font("Times", "B", 12)
         
-        curr_y = start_y + 12
-        self.set_font("Arial", "", 9)
+        # Draw outer borders for header
+        self.rect(start_x, start_y + 8, 25, 12)       # Roll No box
+        self.rect(start_x + 25, start_y + 8, 50, 12)  # Name box
+        self.rect(start_x + 75, start_y + 8, 15, 12)  # Gender box
+        
+        # Draw text inside headers
+        self.set_xy(start_x, start_y + 8)
+        self.cell(25, 6, "Electoral", align="C")
+        self.cell(50, 12, "Name", align="C")
+        self.cell(15, 12, "Gender", align="C")
+        
+        self.set_xy(start_x, start_y + 14)
+        self.cell(25, 6, "Roll No.", align="C")
+        
+        # Table Data Rows
+        curr_y = start_y + 20
+        self.set_font("Times", "", 12)
         
         for cand in candidates:
             self.set_xy(start_x, curr_y)
-            self.cell(20, 6, str(cand["roll_no"]), border=1, align="C")
-            self.cell(55, 6, str(cand["name"]), border=1)
+            self.cell(25, 8, str(cand["roll_no"]), border=1, align="C")
+            self.cell(50, 8, str(cand["name"]), border=1)
             g = "M" if cand["gender"] == "Male" else "F"
-            self.cell(15, 6, g, border=1, align="C")
-            curr_y += 6
+            self.cell(15, 8, g, border=1, align="C")
+            curr_y += 8
             
         return curr_y
+
+# --- EXCEL GENERATOR FUNCTION ---
+def generate_excel_report(col_name, yr_str, cat_str, filtered_cls, cls_data):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Nominations"
+
+    # Styling
+    font_heading = Font(name="Times New Roman", size=14, bold=True)
+    font_header = Font(name="Times New Roman", size=12, bold=True)
+    font_data = Font(name="Times New Roman", size=12)
+    
+    align_center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    align_left = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    
+    border_thin = Border(
+        left=Side(style='thin'), right=Side(style='thin'),
+        top=Side(style='thin'), bottom=Side(style='thin')
+    )
+
+    # Column Widths
+    ws.column_dimensions['A'].width = 12
+    ws.column_dimensions['B'].width = 30
+    ws.column_dimensions['C'].width = 10
+    ws.column_dimensions['D'].width = 5   # Gap between columns
+    ws.column_dimensions['E'].width = 12
+    ws.column_dimensions['F'].width = 30
+    ws.column_dimensions['G'].width = 10
+
+    # Main Headings (Merged across both visual columns)
+    ws.merge_cells('A1:G1'); ws['A1'] = col_name; ws['A1'].font = font_heading; ws['A1'].alignment = align_center
+    ws.merge_cells('A2:G2'); ws['A2'] = f"College Union Election {yr_str}"; ws['A2'].font = font_heading; ws['A2'].alignment = align_center
+    ws.merge_cells('A3:G3'); ws['A3'] = "LIST OF VALID NOMINATIONS OF CLASS REPRESENTATIVE ELECTION"; ws['A3'].font = font_heading; ws['A3'].alignment = align_center
+    ws.merge_cells('A4:G4'); ws['A4'] = f"Category: {cat_str}"; ws['A4'].font = font_heading; ws['A4'].alignment = align_center
+
+    curr_row = 6
+    pairs = [filtered_cls[i:i+2] for i in range(0, len(filtered_cls), 2)]
+
+    for pair in pairs:
+        left_class = pair[0]
+        right_class = pair[1] if len(pair) > 1 else None
+
+        left_cands = sorted([c for c in cls_data[left_class]["candidates"] if c.get("status") == "Nominated"], key=lambda x: x["name"])
+        right_cands = sorted([c for c in cls_data[right_class]["candidates"] if c.get("status") == "Nominated"], key=lambda x: x["name"]) if right_class else []
+
+        # Left Table
+        ws.cell(row=curr_row, column=1, value=left_class).font = font_heading
+        ws.cell(row=curr_row+1, column=1, value="Electoral\nRoll No.").font = font_header; ws.cell(row=curr_row+1, column=1).alignment = align_center; ws.cell(row=curr_row+1, column=1).border = border_thin
+        ws.cell(row=curr_row+1, column=2, value="Name").font = font_header; ws.cell(row=curr_row+1, column=2).alignment = align_center; ws.cell(row=curr_row+1, column=2).border = border_thin
+        ws.cell(row=curr_row+1, column=3, value="Gender").font = font_header; ws.cell(row=curr_row+1, column=3).alignment = align_center; ws.cell(row=curr_row+1, column=3).border = border_thin
+
+        r_left = curr_row + 2
+        for c in left_cands:
+            ws.cell(row=r_left, column=1, value=c["roll_no"]).font = font_data; ws.cell(row=r_left, column=1).alignment = align_center; ws.cell(row=r_left, column=1).border = border_thin
+            ws.cell(row=r_left, column=2, value=c["name"]).font = font_data; ws.cell(row=r_left, column=2).alignment = align_left; ws.cell(row=r_left, column=2).border = border_thin
+            ws.cell(row=r_left, column=3, value="M" if c["gender"]=="Male" else "F").font = font_data; ws.cell(row=r_left, column=3).alignment = align_center; ws.cell(row=r_left, column=3).border = border_thin
+            r_left += 1
+
+        # Right Table
+        r_right = curr_row + 2
+        if right_class:
+            ws.cell(row=curr_row, column=5, value=right_class).font = font_heading
+            ws.cell(row=curr_row+1, column=5, value="Electoral\nRoll No.").font = font_header; ws.cell(row=curr_row+1, column=5).alignment = align_center; ws.cell(row=curr_row+1, column=5).border = border_thin
+            ws.cell(row=curr_row+1, column=6, value="Name").font = font_header; ws.cell(row=curr_row+1, column=6).alignment = align_center; ws.cell(row=curr_row+1, column=6).border = border_thin
+            ws.cell(row=curr_row+1, column=7, value="Gender").font = font_header; ws.cell(row=curr_row+1, column=7).alignment = align_center; ws.cell(row=curr_row+1, column=7).border = border_thin
+
+            for c in right_cands:
+                ws.cell(row=r_right, column=5, value=c["roll_no"]).font = font_data; ws.cell(row=r_right, column=5).alignment = align_center; ws.cell(row=r_right, column=5).border = border_thin
+                ws.cell(row=r_right, column=6, value=c["name"]).font = font_data; ws.cell(row=r_right, column=6).alignment = align_left; ws.cell(row=r_right, column=6).border = border_thin
+                ws.cell(row=r_right, column=7, value="M" if c["gender"]=="Male" else "F").font = font_data; ws.cell(row=r_right, column=7).alignment = align_center; ws.cell(row=r_right, column=7).border = border_thin
+                r_right += 1
+
+        curr_row = max(r_left, r_right) + 2
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    return buffer.getvalue()
+
 
 # --- MAIN APP UI ---
 st.title("📝 Class Representative Nominations")
@@ -132,12 +228,12 @@ with st.form("nomination_form", clear_on_submit=True):
             
             year_data["class_reps"][class_name]["candidates"].append(new_candidate)
             db_utils.save_data(db)
-            st.success(f"Success!")
+            st.success(f"Successfully nominated {cand_name}!")
 
 # --- 3. FILTERED DISPLAY & EXPORT ---
 st.markdown(f"### 3. Current Nominations ({course_year} Year {degree_level})")
 
-# Filter logic: Only get classes that match the selected Year and Degree Level
+# Filter logic
 filtered_classes = []
 class_reps_data = year_data.get("class_reps", {})
 
@@ -149,7 +245,7 @@ for cls in class_reps_data.keys():
             if active_cands:
                 filtered_classes.append(cls)
 
-filtered_classes.sort() # Sort classes alphabetically
+filtered_classes.sort()
 
 if not filtered_classes:
     st.info(f"No candidates nominated yet for any {course_year} {degree_level} classes.")
@@ -157,44 +253,28 @@ else:
     # --- EXPORT BUTTONS ---
     col_export1, col_export2 = st.columns([1, 1])
     
-    # 1. Generate True Excel (.xlsx)
-    flat_data = []
-    for cls in filtered_classes:
-        cands = [c for c in class_reps_data[cls]["candidates"] if c.get("status") == "Nominated"]
-        cands_sorted = sorted(cands, key=lambda x: x["name"])
-        for c in cands_sorted:
-            flat_data.append({
-                "Class": cls,
-                "Roll No": c["roll_no"],
-                "Candidate Name": c["name"],
-                "Gender": c["gender"]
-            })
-    
-    df_export = pd.DataFrame(flat_data)
-    
-    # Create an in-memory buffer to save the Excel file
-    buffer = io.BytesIO()
-    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-        df_export.to_excel(writer, index=False, sheet_name=f"{course_year} {degree_level}")
-    
     with col_export1:
+        # Generate 2-Column Styled Excel
+        excel_bytes = generate_excel_report(
+            college_name, selected_year, f"{course_year} Year {degree_level}", 
+            filtered_classes, class_reps_data
+        )
         st.download_button(
             label="📥 Download Excel (.xlsx)", 
-            data=buffer.getvalue(), 
+            data=excel_bytes, 
             file_name=f"Nominations_{course_year}_{degree_level}.xlsx", 
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True
         )
         
-    # 2. Generate PDF
     with col_export2:
+        # Generate 2-Column PDF
         if st.button("🖨️ Generate 2-Column PDF Report", use_container_width=True, type="primary"):
             pdf = NominationPDF()
             pdf.year_str = selected_year
             pdf.category_str = f"{course_year} Year {degree_level}"
             pdf.add_page()
             
-            # Pair classes for 2-column layout (Left and Right)
             pairs = [filtered_classes[i:i+2] for i in range(0, len(filtered_classes), 2)]
             
             for pair in pairs:
@@ -204,30 +284,27 @@ else:
                 left_cands = sorted([c for c in class_reps_data[left_class]["candidates"] if c.get("status") == "Nominated"], key=lambda x: x["name"])
                 right_cands = sorted([c for c in class_reps_data[right_class]["candidates"] if c.get("status") == "Nominated"], key=lambda x: x["name"]) if right_class else []
                 
-                # Estimate height required to prevent ugly page breaks
                 max_cands = max(len(left_cands), len(right_cands))
-                estimated_height = 12 + (max_cands * 6)
+                estimated_height = 20 + (max_cands * 8)
                 
                 if pdf.get_y() + estimated_height > 270:
                     pdf.add_page()
                     
                 start_y = pdf.get_y()
                 
-                # Draw Left Column (X = 10)
+                # Draw Left Column
                 end_y_left = pdf.draw_class_table(left_class, left_cands, 10, start_y)
                 
-                # Draw Right Column (X = 110)
+                # Draw Right Column
                 end_y_right = start_y
                 if right_class:
                     end_y_right = pdf.draw_class_table(right_class, right_cands, 110, start_y)
                     
-                # Move Y down for the next row of pairs
                 pdf.set_y(max(end_y_left, end_y_right) + 10)
                 
-            pdf_bytes = pdf.output(dest='S').encode('latin1')
             st.download_button(
                 label="📥 Click here to download PDF", 
-                data=pdf_bytes, 
+                data=pdf.output(dest='S').encode('latin1'), 
                 file_name=f"Nomination_List_{course_year}_{degree_level}.pdf",
                 mime="application/pdf"
             )
@@ -237,10 +314,7 @@ else:
     # --- DISPLAY CLASSES IN APP ---
     for cls in filtered_classes:
         cands = class_reps_data[cls].get("candidates", [])
-        active_cands = [c for c in cands if c.get("status") == "Nominated"]
-        
-        # Sort Alphabetically
-        active_cands = sorted(active_cands, key=lambda x: x["name"])
+        active_cands = sorted([c for c in cands if c.get("status") == "Nominated"], key=lambda x: x["name"])
         
         st.markdown(f"#### {cls}")
         
@@ -250,7 +324,6 @@ else:
         )
         st.dataframe(display_df, use_container_width=True, hide_index=True)
         
-        # Unique delete expander for each specific class
         with st.expander(f"Delete an incorrect entry from {cls} (Typo correction)"):
             cand_to_delete = st.selectbox(
                 "Select candidate to remove:", 
