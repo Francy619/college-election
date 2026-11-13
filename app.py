@@ -239,12 +239,31 @@ if current_user == SUPERADMIN_USER:
         st.rerun()
         
     st.sidebar.markdown("---")
+    st.sidebar.subheader("💾 Testing: Backup & Restore")
+    st.sidebar.caption("Use this to keep data when updating code!")
+    
+    # 1. Download Backup
     st.sidebar.download_button(
-        label="📥 Download Master DB Backup",
+        label="📥 1. Download Master DB Backup",
         data=json.dumps(db, indent=4),
         file_name="master_election_data.json",
         mime="application/json"
     )
+
+    # 2. Restore Backup
+    uploaded_db = st.sidebar.file_uploader("📤 2. Restore Database", type=["json"])
+    if uploaded_db is not None:
+        try:
+            restored_data = json.load(uploaded_db)
+            if "users" in restored_data and "colleges" in restored_data:
+                db_utils.save_data(restored_data)
+                st.sidebar.success("✅ Database restored! Reloading...")
+                time.sleep(1)
+                st.rerun()
+            else:
+                st.sidebar.error("❌ Invalid database format.")
+        except Exception as e:
+            st.sidebar.error(f"❌ Error restoring database: {e}")
 
     def super_admin_dashboard():
         st.title("🛡️ Developer Master Control Panel")
