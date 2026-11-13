@@ -1,5 +1,8 @@
 import streamlit as st
 import pandas as pd
+import json
+import os
+import io
 from fpdf import FPDF
 import db_utils
 
@@ -19,134 +22,165 @@ if college_id not in db["colleges"]: st.stop()
 college_data = db["colleges"][college_id]
 college_name = college_data.get("college_name", "COLLEGE UNION ELECTION")
 
+# --- PDF GENERATOR CLASS ---
 class BallotPDF(FPDF):
-    def create_multiple_ballots(self, count, post_name, class_name, seats, candidates, year_str, poll_date_str, college_name, is_main_post=False):
-        for idx in range(count):
-            if idx % 2 == 0:
-                self.add_page()
-                y_offset = 0
-            else:
-                y_offset = 148.5
-                self.set_line_width(0.5)
-                for x in range(0, 210, 4):
-                    self.line(x, 148.5, x + 2, 148.5)
-            self._draw_single_ballot(y_offset, post_name, class_name, seats, candidates, year_str, poll_date_str, college_name, is_main_post)
-
-    def _draw_single_ballot(self, y_offset, post_name, class_name, seats, candidates, year_str, poll_date_str, college_name, is_main_post):
-        display_seats = seats
-        if not is_main_post:
-            active_cands = [c for c in candidates if c.get('status') == "Nominated"]
-            males = [c for c in active_cands if c['gender'] == 'Male']
-            females = [c for c in active_cands if c['gender'] == 'Female']
-            
-            contesting_males = len(males) > 1
-            contesting_females = len(females) > 1
-            
-            if contesting_males and contesting_females:
-                display_seats = 2
-            elif contesting_males or contesting_females:
-                display_seats = 1
-
-        self.set_font("Arial", "", 10)
+    def generate_ballots(self, class_list, class_reps_data, year_str, poll_date_str, college_name):
+        valid_classes = []
         
+        # Filter for classes that ACTUALLY require an election (more than 1 candidate in a gender)
+        for cls in class_list:
+            c_data = class_reps_data.get(cls, {})
+            active_cands = [c for c in c_data.get("candidates", []) if c.get('status') == "Nominated"]
+            
+            # Alphabetically sort candidates for ballot
+            males = sorted([c for c in active_cands if c['gender'] == 'Male'], key=lambda x: x['name'])
+            females = sorted([c for c in active_cands if c['gender'] == 'Female'], key=lambda x: x['name'])
+            
+            if len(males) > 1 or len(females) > 1:
+                valid_classes.append({
+                    "class_name": cls,
+                    "males": males,
+                    "females": females
+                })
+        
+        # Loop through each valid class and create exactly ONE sheet per class (with 2 identical ballots on it)
+        for cls_info in valid_classes:
+            self.add_page()
+            
+            # 1. TOP HALF BALLOT
+            self._draw_single_ballot(0, cls_info, year_str, poll_date_str, college_name)
+            
+            # Draw horizontal perforation line across the middle of the page
+            self.set_line_width(0.5)
+            for x in range(0, 210, 4):  
+                self.line(x, 148.5, x + 2, 148.5)
+                
+            # 2. BOTTOM HALF BALLOT (Exact same class repeated)
+            self._draw_single_ballot(148.5, cls_info, year_str, poll_date_str, college_name)
+
+    def _draw_single_ballot(self, y_offset, cls_info, year_str, poll_date_str, college_name):
+        class_name = cls_info["class_name"]
+        males = cls_info["males"]
+        females = cls_info["females"]
+        
+        contesting_males = len(males) > 1
+        contesting_females = len(females) > 1
+        
+        display_seats = 0
+        if contesting_males and contesting_females:
+            display_seats = 2
+        elif contesting_males or contesting_females:
+            display_seats = 1
+
+        self.set_font("Times", "", 12)
+        
+        # ==========================================
+        # LEFT SIDE: Counter Foil
+        # ==========================================
         self.set_xy(10, 15 + y_offset)
-        self.set_font("Arial", "B", 10)
-        self.cell(60, 7, "SL. No. ________", ln=True)
-        self.set_font("Arial", "", 9)
-        self.cell(60, 7, f"Election to College Union {year_str}", ln=True)
-        self.set_font("Arial", "B", 9)
-        self.cell(60, 7, "Counter foil of Ballot Paper", ln=True)
-        self.set_font("Arial", "", 9)
+        self.cell(60, 6, "SL. No. ________", ln=True)
+        self.cell(60, 6, f"Election to College Union {year_str}", ln=True)
+        self.cell(60, 6, "Counter foil of Ballot Paper", ln=True)
         
-        post_disp = post_name if is_main_post else f"{post_name} ({class_name})"
-        self.multi_cell(60, 7, f"Name of the post: {post_disp}")
-        self.set_x(10)
-        self.cell(60, 7, f"No. of Seats: {display_seats}", ln=True)
-        self.ln(3) 
+        self.cell(60, 6, "Name of the post: Class Representative", ln=True)
+        # Class Name boldly below the post name
+        self.set_font("Times", "B", 12)
+        self.cell(60, 6, f"({class_name})", ln=True)
+        self.set_font("Times", "", 12)
+        
+        self.cell(60, 6, f"No. of Seats: {display_seats}", ln=True)
+        self.ln(2) 
         
         self.set_x(10)
-        self.cell(60, 7, "Name of the elector: ____________", ln=True)
-        if not is_main_post:
-            self.set_x(10)
-            self.cell(60, 7, f"Class: {class_name}", ln=True)
+        self.cell(60, 6, "Name of the elector: ____________", ln=True)
         self.set_x(10)
-        self.cell(60, 7, "Electoral Roll No.: ____________", ln=True)
+        self.cell(60, 6, "Electoral Roll No.: ____________", ln=True)
         self.set_x(10)
-        self.cell(60, 7, f"Date of poll: {poll_date_str}", ln=True)
+        self.cell(60, 6, f"Date of poll: {poll_date_str}", ln=True)
         
+        # Draw vertical perforation line separating counter foil and ballot
         self.set_line_width(0.5)
         for y in range(int(10 + y_offset), int(140 + y_offset), 4):
             self.line(75, y, 75, y + 2)
             
+        # ==========================================
+        # RIGHT SIDE: Main Ballot
+        # ==========================================
         self.set_xy(85, 15 + y_offset)
-        self.set_font("Arial", "B", 10)
         self.cell(50, 5, "SL. No. ________")
         self.cell(60, 5, "Signature of the RO..................", ln=True, align="R")
         
         self.set_xy(85, 25 + y_offset)
-        self.set_font("Arial", "", 10)
+        self.set_font("Times", "", 12)
         self.cell(110, 5, college_name, ln=True, align="C")
         self.set_x(85)
         self.cell(110, 5, f"Election to College Union {year_str}", ln=True, align="C")
         self.set_x(85)
-        self.set_font("Arial", "B", 10)
-        self.multi_cell(110, 5, f"Name of the post: {post_disp}", align="C")
-        self.set_x(85)
-        self.cell(110, 5, f"No. of Seats: {display_seats}", ln=True, align="C")
-        self.set_x(85)
-        self.set_font("Arial", "B", 12)
-        self.cell(110, 8, "BALLOT PAPER", ln=True, align="C")
-        self.set_x(85)
-        self.set_font("Arial", "", 9)
-        self.multi_cell(110, 4, "(Vote by placing the mark 'X' against the name of the candidate for whom you vote)", align="C")
-        self.ln(3)
+        
+        # Inline Bold formatting for Class Name on the Right Side (Left Aligned)
+        str_start = "Name of the post: Class representative ("
+        self.cell(self.get_string_width(str_start), 6, str_start)
+        self.set_font("Times", "B", 12)
+        self.cell(self.get_string_width(class_name), 6, class_name)
+        self.set_font("Times", "", 12)
+        self.cell(self.get_string_width(")"), 6, ")", ln=True)
         
         self.set_x(85)
-        self.set_font("Arial", "B", 10)
-        self.cell(25, 8, "Roll No", border=1, align="C")
-        self.cell(60, 8, "Name", border=1, align="C")
-        self.cell(25, 8, "Space", border=1, align="C")
+        self.cell(110, 6, f"No. of Seats: {display_seats}", ln=True, align="L")
+        
+        self.set_x(85)
+        self.set_font("Times", "B", 12)
+        self.cell(110, 7, "BALLOT PAPER", ln=True, align="C")
+        self.set_x(85)
+        self.set_font("Times", "", 12)
+        self.multi_cell(110, 5, "(Vote by placing the mark 'X' against the name of the candidate for whom you vote)", align="C")
+        self.ln(2)
+        
+        # Candidate Table Header
+        self.set_x(85)
+        self.set_font("Times", "B", 12)
+        self.cell(25, 7, "Roll No", border=1, align="C")
+        self.cell(60, 7, "Name", border=1, align="C")
+        self.cell(25, 7, "Space", border=1, align="C")
         self.ln()
         
-        self.set_font("Arial", "B", 10)
-        row_height = 10
+        self.set_font("Times", "B", 12)
+        row_height = 8 # Reduced slightly to ensure it perfectly fits half a page if 4+ candidates
         
-        if is_main_post:
-            active_cands = [c for c in candidates if c.get('status') == "Nominated"]
-            for cand in active_cands:
+        if contesting_males:
+            self.set_x(85)
+            self.cell(110, 6, "Class Representative Male", border=1, align="C")
+            self.ln()
+            for cand in males:
                 self.set_x(85)
                 self.cell(25, row_height, str(cand['roll_no']), border=1, align="C")
                 self.cell(60, row_height, str(cand['name']), border=1)
                 self.cell(25, row_height, "", border=1)
                 self.ln()
-        else:
-            active_cands = [c for c in candidates if c.get('status') == "Nominated"]
-            males = [c for c in active_cands if c['gender'] == 'Male']
-            females = [c for c in active_cands if c['gender'] == 'Female']
-            
-            if len(males) > 1:
+                
+        if contesting_females:
+            self.set_x(85)
+            self.cell(110, 6, "Class Representative Female", border=1, align="C")
+            self.ln()
+            for cand in females:
                 self.set_x(85)
-                self.cell(110, 6, "Class Representative Male", border=1, align="C")
+                self.cell(25, row_height, str(cand['roll_no']), border=1, align="C")
+                self.cell(60, row_height, str(cand['name']), border=1)
+                self.cell(25, row_height, "", border=1)
                 self.ln()
-                for cand in males:
-                    self.set_x(85)
-                    self.cell(25, row_height, str(cand['roll_no']), border=1, align="C")
-                    self.cell(60, row_height, str(cand['name']), border=1)
-                    self.cell(25, row_height, "", border=1)
-                    self.ln()
-                    
-            if len(females) > 1:
-                self.set_x(85)
-                self.cell(110, 6, "Class Representative Female", border=1, align="C")
-                self.ln()
-                for cand in females:
-                    self.set_x(85)
-                    self.cell(25, row_height, str(cand['roll_no']), border=1, align="C")
-                    self.cell(60, row_height, str(cand['name']), border=1)
-                    self.cell(25, row_height, "", border=1)
-                    self.ln()
 
-st.title("🖨️ Ballot Paper Generation")
+# --- CACHED PDF GENERATOR ---
+@st.cache_data(show_spinner=False)
+def generate_ballot_pdf_cached(class_list, cls_data_json, year_str, poll_date_str, col_name):
+    class_reps_data = json.loads(cls_data_json)
+    pdf = BallotPDF()
+    pdf.generate_ballots(class_list, class_reps_data, year_str, poll_date_str, col_name)
+    return pdf.output(dest='S').encode('latin1')
+
+
+# --- MAIN UI ---
+st.title("🖨️ Master Ballot Generation (Press Copy)")
+st.markdown("Generate master copies of the ballot papers for the printing press. **Each printed sheet will contain exactly 1 class, repeated twice (Top & Bottom halves)**.")
 
 if "election_years" not in college_data or not college_data["election_years"]:
     st.warning("No election data found.")
@@ -157,69 +191,91 @@ selected_year = st.selectbox("Select Election Year", available_years, index=len(
 year_data = college_data["election_years"][selected_year]
 
 poll_date_display = year_data.get("poll_date", "____________") or "____________"
+class_reps_data = year_data.get("class_reps", {})
 
-tab1, tab2 = st.tabs(["1. Single Class Ballot Print", "2. Consolidated Master Ballot PDF (All Classes)"])
+if not class_reps_data:
+    st.info("No class representatives have been nominated for this year yet.")
+    st.stop()
 
-with tab1:
-    st.subheader("Print Ballots for a Specific Class")
-    classes_with_noms = [c for c, d in year_data.get("class_reps", {}).items() if d["candidates"]]
-    if not classes_with_noms:
-        st.warning("No classes have candidates registered.")
+# --- 1. FILTER CONTROLS ---
+st.markdown("### 1. Filter Classes for Printing")
+c1, c2, c3 = st.columns(3)
+
+with c1:
+    lvl_filter = st.selectbox("Course Level", ["All", "UG", "PG"])
+with c2:
+    yr_filter = st.selectbox("Year", ["All", "I", "II", "III", "IV"])
+with c3:
+    progs = ["All"]
+    if lvl_filter == "UG":
+        progs.extend(year_data.get("programs", {}).get("UG", []))
+    elif lvl_filter == "PG":
+        progs.extend(year_data.get("programs", {}).get("PG", []))
     else:
-        selected_class = st.selectbox("Select Class", classes_with_noms)
-        class_info = year_data["class_reps"][selected_class]
-        ballot_count = st.number_input("Number of Ballot Papers to Print", min_value=1, max_value=1000, value=60)
+        progs.extend(year_data.get("programs", {}).get("UG", []))
+        progs.extend(year_data.get("programs", {}).get("PG", []))
         
-        if st.button("🖨️ Generate Ballot PDF for Selected Class", type="primary"):
-            pdf = BallotPDF()
-            pdf.create_multiple_ballots(
-                count=ballot_count,
-                post_name="Class representative",
-                class_name=selected_class,
-                seats=class_info["seats"],
-                candidates=class_info["candidates"],
-                year_str=selected_year,
-                poll_date_str=poll_date_display,
-                college_name=college_name,
-                is_main_post=False
-            )
-            st.download_button(
-                label=f"📥 Download Ballot PDF ({selected_class})",
-                data=pdf.output(dest='S').encode('latin1'),
-                file_name=f"Ballots_{selected_class.replace(' ', '_')}_{selected_year}.pdf"
-            )
+    prog_filter = st.selectbox("Program / Class", progs)
 
-with tab2:
-    st.subheader("Consolidated Master Archive PDF")
-    if st.button("🖨️ Generate Consolidated Master Ballot PDF", type="primary"):
-        master_pdf = BallotPDF()
-        generated_count = 0
+# Apply Filter Logic
+filtered_classes = []
+for cls in class_reps_data.keys():
+    parts = cls.split(" ", 1)
+    if len(parts) == 2:
+        c_yr, c_prog = parts
+    else:
+        continue
         
-        for c_name, c_data in year_data.get("class_reps", {}).items():
-            active_cands = [c for c in c_data["candidates"] if c.get("status") == "Nominated"]
-            males = [c for c in active_cands if c['gender'] == 'Male']
-            females = [c for c in active_cands if c['gender'] == 'Female']
+    if yr_filter != "All" and c_yr != yr_filter: continue
+    if prog_filter != "All" and c_prog != prog_filter: continue
+    if lvl_filter != "All":
+        if c_prog not in year_data.get("programs", {}).get(lvl_filter, []):
+            continue
             
-            if len(males) > 1 or len(females) > 1:
-                master_pdf.create_multiple_ballots(
-                    count=2,
-                    post_name="Class representative",
-                    class_name=c_name,
-                    seats=c_data["seats"],
-                    candidates=c_data["candidates"],
-                    year_str=selected_year,
-                    poll_date_str=poll_date_display,
-                    college_name=college_name,
-                    is_main_post=False
-                )
-                generated_count += 1
-                
-        if generated_count > 0:
-            st.success(f"Consolidated ballot PDF generated for {generated_count} contested classes!")
-            st.download_button(
-                label="📥 Download Master Consolidated Ballot PDF",
-                data=master_pdf.output(dest='S').encode('latin1'),
-                file_name=f"Master_Consolidated_Ballots_{selected_year}.pdf"
-            )
-        else:
-            st.warning("No contested classes found across the college.")
+    filtered_classes.append(cls)
+
+filtered_classes.sort()
+
+# Pre-calculate which classes actually have a contested election
+contested_classes = []
+for cls in filtered_classes:
+    c_data = class_reps_data[cls]
+    active = [c for c in c_data.get("candidates", []) if c.get('status') == "Nominated"]
+    males = [c for c in active if c['gender'] == 'Male']
+    females = [c for c in active if c['gender'] == 'Female']
+    
+    if len(males) > 1 or len(females) > 1:
+        contested_classes.append(cls)
+
+# --- 2. EXPORT SECTION ---
+st.markdown("---")
+st.markdown("### 2. Print Master Ballot PDF")
+
+if not contested_classes:
+    st.info("No contested elections found for the selected filters. Classes where candidates are unopposed do not require ballots.")
+else:
+    st.success(f"Found {len(contested_classes)} class(es) requiring ballots based on your filter.")
+    
+    # Generate cached string
+    cls_data_json_str = json.dumps(class_reps_data)
+    
+    pdf_bytes = generate_ballot_pdf_cached(
+        contested_classes, 
+        cls_data_json_str, 
+        selected_year, 
+        poll_date_display, 
+        college_name
+    )
+    
+    st.download_button(
+        label="📥 Download Master Ballot PDF", 
+        data=pdf_bytes, 
+        file_name=f"Master_Ballots_{selected_year}.pdf",
+        mime="application/pdf",
+        use_container_width=True,
+        type="primary"
+    )
+    
+    with st.expander("Show list of classes included in this PDF"):
+        for c in contested_classes:
+            st.write(f"- {c}")
