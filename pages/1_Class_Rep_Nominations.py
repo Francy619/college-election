@@ -37,7 +37,8 @@ c1, c2, c3, c4 = st.columns(4)
 with c1:
     degree_level = st.selectbox("Course Level", ["UG", "PG"])
 with c2:
-    year_options = ["I", "II", "III"] if degree_level == "UG" else ["I", "II"]
+    # Updated to include "IV" for UG programs
+    year_options = ["I", "II", "III", "IV"] if degree_level == "UG" else ["I", "II"]
     course_year = st.selectbox("Year", year_options)
 with c3:
     program_list = year_data.get("programs", {}).get(degree_level, [])
@@ -88,27 +89,37 @@ with st.form("nomination_form", clear_on_submit=True):
             db_utils.save_data(db)
             st.success(f"Successfully nominated {cand_name}!")
 
-st.markdown("### 3. Current Nominations")
-current_candidates = year_data["class_reps"][class_name]["candidates"]
+st.markdown("### 3. Current Nominations (All Classes)")
+class_reps_data = year_data.get("class_reps", {})
+has_any_candidates = False
 
-if current_candidates:
-    df = pd.DataFrame(current_candidates)
-    display_df = df[["roll_no", "name", "gender", "status"]].rename(
-        columns={"roll_no": "Roll No", "name": "Candidate Name", "gender": "Gender", "status": "Status"}
-    )
-    st.dataframe(display_df, use_container_width=True, hide_index=True)
-    
-    with st.expander("Delete an incorrect entry (Typo correction)"):
-        cand_to_delete = st.selectbox(
-            "Select candidate to remove:", 
-            options=[c["id"] for c in current_candidates],
-            format_func=lambda x: next(c["name"] for c in current_candidates if c["id"] == x)
+# Loop through all classes and display them if they have candidates
+for cls, cls_data in class_reps_data.items():
+    cands = cls_data.get("candidates", [])
+    if cands:
+        has_any_candidates = True
+        st.markdown(f"#### {cls}")
+        
+        df = pd.DataFrame(cands)
+        display_df = df[["roll_no", "name", "gender", "status"]].rename(
+            columns={"roll_no": "Roll No", "name": "Candidate Name", "gender": "Gender", "status": "Status"}
         )
-        if st.button("Delete Entry", type="primary"):
-            year_data["class_reps"][class_name]["candidates"] = [
-                c for c in current_candidates if c["id"] != cand_to_delete
-            ]
-            db_utils.save_data(db)
-            st.rerun()
-else:
-    st.info(f"No candidates nominated yet for {class_name}.")
+        st.dataframe(display_df, use_container_width=True, hide_index=True)
+        
+        # Unique delete expander for each specific class
+        with st.expander(f"Delete an incorrect entry from {cls} (Typo correction)"):
+            cand_to_delete = st.selectbox(
+                "Select candidate to remove:", 
+                options=[c["id"] for c in cands],
+                format_func=lambda x: next(c["name"] for c in cands if c["id"] == x),
+                key=f"del_box_{cls}"
+            )
+            if st.button("Delete Entry", type="primary", key=f"del_btn_{cls}"):
+                year_data["class_reps"][cls]["candidates"] = [
+                    c for c in cands if c["id"] != cand_to_delete
+                ]
+                db_utils.save_data(db)
+                st.rerun()
+
+if not has_any_candidates:
+    st.info("No candidates nominated yet for any class.")
