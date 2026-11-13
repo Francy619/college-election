@@ -4,6 +4,7 @@ import json
 import os
 import random
 import string
+import time
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -42,6 +43,9 @@ if "username" not in st.session_state:
     st.session_state.username = ""
 if "otp_sent_to" not in st.session_state:
     st.session_state.otp_sent_to = None
+# State for controlling the auth menu (Tabs replacement)
+if "auth_menu" not in st.session_state:
+    st.session_state.auth_menu = "🔑 Login"
 
 def generate_id():
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
@@ -89,10 +93,17 @@ if not st.session_state.authenticated:
     col1, col2, col3 = st.columns([1, 1.5, 1])
     
     with col2:
-        auth_tab1, auth_tab2, auth_tab3 = st.tabs(["🔑 Login", "🏛️ Register New College", "🔄 Forgot Password"])
+        # Replaced st.tabs with a controlled horizontal radio menu
+        selected_tab = st.radio(
+            "Navigation", 
+            ["🔑 Login", "🏛️ Register New College", "🔄 Forgot Password"], 
+            horizontal=True, 
+            label_visibility="collapsed",
+            key="auth_menu"
+        )
         
         # --- TAB 1: LOGIN ---
-        with auth_tab1:
+        if selected_tab == "🔑 Login":
             st.subheader("Institution & Admin Login")
             with st.form("login_form"):
                 u_input = st.text_input("Username")
@@ -112,7 +123,7 @@ if not st.session_state.authenticated:
                         st.error("Invalid username or password.")
                         
         # --- TAB 2: REGISTER NEW COLLEGE ---
-        with auth_tab2:
+        elif selected_tab == "🏛️ Register New College":
             st.subheader("Register Institution")
             st.write("Create the master account for your college.")
             with st.form("signup_form"):
@@ -150,10 +161,15 @@ if not st.session_state.authenticated:
                             "reset_otp": ""
                         }
                         db_utils.save_data(db)
-                        st.success("College registered successfully! Switch to the Login tab.")
+                        
+                        # Show success message, wait 1.5 seconds, then jump to login tab
+                        st.success("College registered successfully! Redirecting to login...")
+                        time.sleep(1.5)
+                        st.session_state.auth_menu = "🔑 Login"
+                        st.rerun()
 
         # --- TAB 3: FORGOT PASSWORD ---
-        with auth_tab3:
+        elif selected_tab == "🔄 Forgot Password":
             st.subheader("Reset Password")
             
             if not st.session_state.otp_sent_to:
@@ -192,7 +208,12 @@ if not st.session_state.authenticated:
                             db["users"][target_user]["reset_otp"] = "" 
                             db_utils.save_data(db)
                             st.session_state.otp_sent_to = None # Reset state
-                            st.success("Password successfully changed! You can now log in.")
+                            
+                            # Success message, small wait, and auto-redirect to login
+                            st.success("Password successfully changed! Redirecting to login...")
+                            time.sleep(1.5)
+                            st.session_state.auth_menu = "🔑 Login"
+                            st.rerun()
                         else:
                             st.error("Invalid OTP code.")
                             
