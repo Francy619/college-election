@@ -10,7 +10,7 @@ import db_utils
 SUPERADMIN_USER = "superadmin"
 SUPERADMIN_PASS = "superadmin123"
 
-# --- DEFAULT PROGRAM LISTS (From Original App) ---
+# --- DEFAULT PROGRAM LISTS ---
 DEFAULT_UG = [
     "B. Sc Mathematics", "B. Sc Physics", "B. Sc Chemistry", "B. Sc Botany", 
     "B. Sc Zoology", "B. A English", "B. A Economics", "B. A History", 
@@ -25,6 +25,10 @@ DEFAULT_PG = [
 # --- INITIALIZE DATABASE ---
 db = db_utils.load_data()
 
+# Auto-repair missing keys for legacy databases on Streamlit Cloud
+if "colleges" not in db: db["colleges"] = {}
+if "users" not in db: db["users"] = {}
+
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="College Election Manager", layout="wide", page_icon="🗳️")
 
@@ -37,7 +41,9 @@ if "username" not in st.session_state:
 def generate_id():
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
 
-# --- LOGIN & REGISTRATION PORTAL ---
+# ==========================================
+# 🔐 LOGIN & REGISTRATION PORTAL 
+# ==========================================
 if not st.session_state.authenticated:
     st.markdown("<h2 style='text-align: center; color: #2E4053;'>COLLEGE UNION ELECTION PORTAL</h2>", unsafe_allow_html=True)
     st.markdown("<h4 style='text-align: center; color: #5D6D7E;'>Multi-Institution Election Management System</h4><br>", unsafe_allow_html=True)
@@ -72,13 +78,17 @@ if not st.session_state.authenticated:
             st.subheader("Register Institution")
             st.write("Create the master account for your college.")
             with st.form("signup_form"):
-                c_name = st.text_input("Official College Name", value="ST. DOMINIC'S COLLEGE, KANJIRAPALLY")
+                c_name = st.text_input("Official College Name", value="ST. THOMAS COLLEGE")
                 e_mode = st.radio("Election Mode", ["Parliamentary (Indirect - Class Reps First)", "Presidential (Direct - Main Posts Only)"])
                 st.markdown("---")
                 new_user = st.text_input("Choose Admin Username")
                 new_pass = st.text_input("Choose Password", type="password")
                 
                 if st.form_submit_button("Create Institution Account"):
+                    # Failsafe check
+                    if "colleges" not in db: db["colleges"] = {}
+                    if "users" not in db: db["users"] = {}
+                        
                     if not new_user or not new_pass or not c_name:
                         st.warning("Please fill in all fields.")
                     elif new_user == SUPERADMIN_USER or new_user in db["users"]:
@@ -159,7 +169,8 @@ if current_user == SUPERADMIN_USER:
                         
                     st.markdown("<br>", unsafe_allow_html=True)
                     if st.button(f"🗑️ Permanently Delete {cdata['college_name']}", key=f"del_{cid}", type="primary"):
-                        for u in c_users.keys():
+                        # Use list() to prevent dictionary size change errors during iteration
+                        for u in list(c_users.keys()):
                             del db["users"][u]
                         del db["colleges"][cid]
                         db_utils.save_data(db)
@@ -174,8 +185,19 @@ if current_user == SUPERADMIN_USER:
 # ==========================================
 # 🏫 NORMAL COLLEGE USER VIEW 
 # ==========================================
+# Safety check if user gets deleted while logged in
+if current_user not in db["users"]:
+    st.session_state.authenticated = False
+    st.rerun()
+
 user_profile = db["users"][current_user]
 college_id = user_profile["college_id"]
+
+# Safety check if college gets deleted
+if college_id not in db["colleges"]:
+    st.session_state.authenticated = False
+    st.rerun()
+    
 college_data = db["colleges"][college_id]
 
 # --- SIDEBAR: USER & SETTINGS ---
@@ -241,6 +263,9 @@ election_year = st.sidebar.text_input("Election Year", value="2026-27")
 poll_date = st.sidebar.text_input("Date of Poll", value="")
 
 # Ensure year structure exists inside this specific college's data
+if "election_years" not in college_data:
+    college_data["election_years"] = {}
+
 if election_year not in college_data["election_years"]:
     college_data["election_years"][election_year] = {
         "poll_date": poll_date,
