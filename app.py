@@ -43,9 +43,10 @@ if "username" not in st.session_state:
     st.session_state.username = ""
 if "otp_sent_to" not in st.session_state:
     st.session_state.otp_sent_to = None
-# State for controlling the auth menu (Tabs replacement)
-if "auth_menu" not in st.session_state:
-    st.session_state.auth_menu = "🔑 Login"
+
+# BULLETPROOF TAB STATE: Do not bind directly to the widget key
+if "current_auth_tab" not in st.session_state:
+    st.session_state.current_auth_tab = "🔑 Login"
 
 def generate_id():
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
@@ -93,14 +94,22 @@ if not st.session_state.authenticated:
     col1, col2, col3 = st.columns([1, 1.5, 1])
     
     with col2:
-        # Replaced st.tabs with a controlled horizontal radio menu
-        selected_tab = st.radio(
+        auth_tabs_list = ["🔑 Login", "🏛️ Register New College", "🔄 Forgot Password"]
+        
+        def update_tab_state():
+            st.session_state.current_auth_tab = st.session_state._auth_radio_widget
+            
+        st.radio(
             "Navigation", 
-            ["🔑 Login", "🏛️ Register New College", "🔄 Forgot Password"], 
+            auth_tabs_list, 
+            index=auth_tabs_list.index(st.session_state.current_auth_tab),
             horizontal=True, 
             label_visibility="collapsed",
-            key="auth_menu"
+            key="_auth_radio_widget",
+            on_change=update_tab_state
         )
+        
+        selected_tab = st.session_state.current_auth_tab
         
         # --- TAB 1: LOGIN ---
         if selected_tab == "🔑 Login":
@@ -162,10 +171,9 @@ if not st.session_state.authenticated:
                         }
                         db_utils.save_data(db)
                         
-                        # Show success message, wait 1.5 seconds, then jump to login tab
                         st.success("College registered successfully! Redirecting to login...")
                         time.sleep(1.5)
-                        st.session_state.auth_menu = "🔑 Login"
+                        st.session_state.current_auth_tab = "🔑 Login"
                         st.rerun()
 
         # --- TAB 3: FORGOT PASSWORD ---
@@ -177,12 +185,10 @@ if not st.session_state.authenticated:
                     reset_user = st.text_input("Enter your Admin Username")
                     if st.form_submit_button("Send Recovery Code"):
                         if reset_user in db["users"] and "email" in db["users"][reset_user]:
-                            # Generate random 6-digit OTP
                             otp = str(random.randint(100000, 999999))
                             db["users"][reset_user]["reset_otp"] = otp
                             db_utils.save_data(db)
                             
-                            # Send Email
                             user_email = db["users"][reset_user]["email"]
                             if send_reset_email(user_email, otp, reset_user):
                                 st.session_state.otp_sent_to = reset_user
@@ -192,7 +198,6 @@ if not st.session_state.authenticated:
                             st.error("Username not found or no email associated.")
             
             else:
-                # OTP was sent, now verify and set new password
                 with st.form("verify_reset_form"):
                     st.info(f"An OTP was sent to the email associated with **{st.session_state.otp_sent_to}**.")
                     entered_otp = st.text_input("Enter 6-digit OTP")
@@ -203,16 +208,14 @@ if not st.session_state.authenticated:
                         saved_otp = db["users"][target_user].get("reset_otp", "")
                         
                         if entered_otp == saved_otp and saved_otp != "":
-                            # Success! Change password and clear OTP
                             db["users"][target_user]["password"] = new_password
                             db["users"][target_user]["reset_otp"] = "" 
                             db_utils.save_data(db)
-                            st.session_state.otp_sent_to = None # Reset state
+                            st.session_state.otp_sent_to = None
                             
-                            # Success message, small wait, and auto-redirect to login
                             st.success("Password successfully changed! Redirecting to login...")
                             time.sleep(1.5)
-                            st.session_state.auth_menu = "🔑 Login"
+                            st.session_state.current_auth_tab = "🔑 Login"
                             st.rerun()
                         else:
                             st.error("Invalid OTP code.")
