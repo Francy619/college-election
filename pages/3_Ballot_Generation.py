@@ -77,7 +77,8 @@ class BallotPDF(FPDF):
         # ==========================================
         # LEFT SIDE: Counter Foil
         # ==========================================
-        self.set_xy(10, 10 + y_offset)
+        # Shifted down to Y=12 for a better top margin
+        self.set_xy(10, 12 + y_offset)
         self.set_font("Times", "", 8) 
         line_ht = 8 
         
@@ -108,17 +109,17 @@ class BallotPDF(FPDF):
         # ==========================================
         # RIGHT SIDE: Main Ballot Headers
         # ==========================================
-        # SL No stays at the very top (Y=8)
-        self.set_xy(85, 8 + y_offset)
+        # SL No moved down to Y=12 to give top margin and align perfectly with counterfoil
+        self.set_xy(85, 12 + y_offset)
         self.set_font("Times", "", 8)
         self.cell(50, 6, "SL. No. _________________")
         
-        # Signature is pushed down to Y=18 to leave a large empty space ABOVE it for the RO Seal
-        self.set_xy(145, 18 + y_offset)
+        # Signature is pushed down to Y=20 to leave a large empty space ABOVE it for the RO Seal
+        self.set_xy(145, 20 + y_offset)
         self.cell(50, 6, "Signature of the RO..................", align="R")
         
-        # College Name resumes below the signature (Y=25)
-        self.set_xy(85, 25 + y_offset)
+        # College Name resumes below the signature (Y=28)
+        self.set_xy(85, 28 + y_offset)
         self.set_font("Times", "B", 10)
         self.cell(110, 6, college_name, ln=True, align="C")
         self.set_x(85)
