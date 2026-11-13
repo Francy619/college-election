@@ -77,7 +77,6 @@ class BallotPDF(FPDF):
         # ==========================================
         # LEFT SIDE: Counter Foil
         # ==========================================
-        # Shifted down to Y=12 for a better top margin
         self.set_xy(10, 12 + y_offset)
         self.set_font("Times", "", 8) 
         line_ht = 8 
@@ -109,7 +108,6 @@ class BallotPDF(FPDF):
         # ==========================================
         # RIGHT SIDE: Main Ballot Headers
         # ==========================================
-        # SL No moved down to Y=12 to give top margin and align perfectly with counterfoil
         self.set_xy(85, 12 + y_offset)
         self.set_font("Times", "", 8)
         self.cell(50, 6, "SL. No. _________________")
@@ -151,11 +149,12 @@ class BallotPDF(FPDF):
         self.cell(110, 5, "(Vote by placing the mark 'X' against the name of the candidate for whom you vote)", ln=True, align="C")
         self.ln(3)
         
+        # Adjusted Column Widths: 20 (Roll) + 60 (Name) + 30 (Space) = 110mm total
         self.set_x(85)
-        self.set_font("Times", "B", 11)
+        self.set_font("Times", "B", 10) # Reduced to 10 so headers fit perfectly
         self.cell(20, 8, "Roll No", border=1, align="C")
-        self.cell(65, 8, "Name of the Candidate", border=1, align="C")
-        self.cell(25, 8, "Space for Mark", border=1, align="C")
+        self.cell(60, 8, "Name of the Candidate", border=1, align="C")
+        self.cell(30, 8, "Space for Mark", border=1, align="C")
         self.ln()
         
         row_height = 10 
@@ -174,12 +173,13 @@ class BallotPDF(FPDF):
                 name_text = str(cand['name'])
                 font_sz = 12
                 self.set_font("Times", "B", font_sz)
-                while self.get_string_width(name_text) > 63 and font_sz > 6:
+                # Adjusted max width to 58 to fit inside the new 60mm column
+                while self.get_string_width(name_text) > 58 and font_sz > 6:
                     font_sz -= 0.5
                     self.set_font("Times", "B", font_sz)
                     
-                self.cell(65, row_height, name_text, border=1)
-                self.cell(25, row_height, "", border=1)
+                self.cell(60, row_height, name_text, border=1)
+                self.cell(30, row_height, "", border=1)
                 self.ln()
                 
         if contesting_females:
@@ -195,18 +195,17 @@ class BallotPDF(FPDF):
                 name_text = str(cand['name'])
                 font_sz = 12
                 self.set_font("Times", "B", font_sz)
-                while self.get_string_width(name_text) > 63 and font_sz > 6:
+                while self.get_string_width(name_text) > 58 and font_sz > 6:
                     font_sz -= 0.5
                     self.set_font("Times", "B", font_sz)
                     
-                self.cell(65, row_height, name_text, border=1)
-                self.cell(25, row_height, "", border=1)
+                self.cell(60, row_height, name_text, border=1)
+                self.cell(30, row_height, "", border=1)
                 self.ln()
 
         # ==========================================
         # ABSOLUTE BOTTOM POSITIONING (Date of Poll)
         # ==========================================
-        # Positioned exactly 135mm down to safely avoid hardware printer margins
         self.set_font("Times", "", 9)
         self.set_xy(10, 135 + y_offset)
         self.cell(65, 5, f"Date of poll: {poll_date_str}")
