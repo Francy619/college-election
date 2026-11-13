@@ -360,3 +360,5 @@ else:
                 ]
                 db_utils.save_data(db)
                 st.rerun()
+# --- INJECT FOOTER ---
+db_utils.add_footer()
