@@ -1,27 +1,24 @@
 import streamlit as st
 import pandas as pd
 from fpdf import FPDF
-import json
-import os
 import db_utils
 
-# --- PAGE CONFIG ---
 st.set_page_config(page_title="Ballot Generation", page_icon="🖨️", layout="wide")
 
-# --- SECURITY: CHECK IF LOGGED IN ---
 if not st.session_state.get("authenticated", False):
     st.warning("🔒 Please log in from the Home page to access this module.")
     st.stop()
 
+db = db_utils.load_data()
 current_user = st.session_state.username
 
-# Load data using central utility
-db = db_utils.load_data()
-user_profile = db.get("users", {}).get(current_user, {})
-college_name = user_profile.get("college_name", "COLLEGE UNION ELECTION")
-college_data = db.get(current_user, {})
+if current_user not in db["users"]: st.stop()
+college_id = db["users"][current_user]["college_id"]
+if college_id not in db["colleges"]: st.stop()
 
-# --- PDF GENERATION CLASS ---
+college_data = db["colleges"][college_id]
+college_name = college_data.get("college_name", "COLLEGE UNION ELECTION")
+
 class BallotPDF(FPDF):
     def create_multiple_ballots(self, count, post_name, class_name, seats, candidates, year_str, poll_date_str, college_name, is_main_post=False):
         for idx in range(count):
@@ -36,7 +33,6 @@ class BallotPDF(FPDF):
             self._draw_single_ballot(y_offset, post_name, class_name, seats, candidates, year_str, poll_date_str, college_name, is_main_post)
 
     def _draw_single_ballot(self, y_offset, post_name, class_name, seats, candidates, year_str, poll_date_str, college_name, is_main_post):
-        # 1. Calculate Dynamic Seat Count based on contesting genders
         display_seats = seats
         if not is_main_post:
             active_cands = [c for c in candidates if c.get('status') == "Nominated"]
@@ -53,8 +49,6 @@ class BallotPDF(FPDF):
 
         self.set_font("Arial", "", 10)
         
-        # --- COUNTER FOIL (LEFT) ---
-        # Increased line spacing (cell height from 5 to 7)
         self.set_xy(10, 15 + y_offset)
         self.set_font("Arial", "B", 10)
         self.cell(60, 7, "SL. No. ________", ln=True)
@@ -68,8 +62,6 @@ class BallotPDF(FPDF):
         self.multi_cell(60, 7, f"Name of the post: {post_disp}")
         self.set_x(10)
         self.cell(60, 7, f"No. of Seats: {display_seats}", ln=True)
-        
-        # Extra line break for better spacing
         self.ln(3) 
         
         self.set_x(10)
@@ -82,14 +74,10 @@ class BallotPDF(FPDF):
         self.set_x(10)
         self.cell(60, 7, f"Date of poll: {poll_date_str}", ln=True)
         
-        # --- VERTICAL CUT LINE ---
         self.set_line_width(0.5)
         for y in range(int(10 + y_offset), int(140 + y_offset), 4):
             self.line(75, y, 75, y + 2)
             
-        # Note: "Cut here" text removed completely
-        
-        # --- BALLOT PAPER (RIGHT) ---
         self.set_xy(85, 15 + y_offset)
         self.set_font("Arial", "B", 10)
         self.cell(50, 5, "SL. No. ________")
@@ -104,7 +92,7 @@ class BallotPDF(FPDF):
         self.set_font("Arial", "B", 10)
         self.multi_cell(110, 5, f"Name of the post: {post_disp}", align="C")
         self.set_x(85)
-        self.cell(110, 5, f"No. of Seats: {display_seats}", ln=True, align="C") # Updated to dynamic seats
+        self.cell(110, 5, f"No. of Seats: {display_seats}", ln=True, align="C")
         self.set_x(85)
         self.set_font("Arial", "B", 12)
         self.cell(110, 8, "BALLOT PAPER", ln=True, align="C")
@@ -113,7 +101,6 @@ class BallotPDF(FPDF):
         self.multi_cell(110, 4, "(Vote by placing the mark 'X' against the name of the candidate for whom you vote)", align="C")
         self.ln(3)
         
-        # Table Headers
         self.set_x(85)
         self.set_font("Arial", "B", 10)
         self.cell(25, 8, "Roll No", border=1, align="C")
@@ -121,7 +108,6 @@ class BallotPDF(FPDF):
         self.cell(25, 8, "Space", border=1, align="C")
         self.ln()
         
-        # Table Rows
         self.set_font("Arial", "B", 10)
         row_height = 10
         
@@ -160,16 +146,15 @@ class BallotPDF(FPDF):
                     self.cell(25, row_height, "", border=1)
                     self.ln()
 
-# --- HEADER ---
 st.title("🖨️ Ballot Paper Generation")
 
-if not college_data:
+if "election_years" not in college_data or not college_data["election_years"]:
     st.warning("No election data found.")
     st.stop()
 
-available_years = list(college_data.keys())
+available_years = list(college_data["election_years"].keys())
 selected_year = st.selectbox("Select Election Year", available_years, index=len(available_years)-1)
-year_data = college_data[selected_year]
+year_data = college_data["election_years"][selected_year]
 
 poll_date_display = year_data.get("poll_date", "____________") or "____________"
 
@@ -215,10 +200,9 @@ with tab2:
             males = [c for c in active_cands if c['gender'] == 'Male']
             females = [c for c in active_cands if c['gender'] == 'Female']
             
-            # Print only if there's a contest in at least one gender
             if len(males) > 1 or len(females) > 1:
                 master_pdf.create_multiple_ballots(
-                    count=2, # Prints 1 A4 sheet (2 ballots) per contested class
+                    count=2,
                     post_name="Class representative",
                     class_name=c_name,
                     seats=c_data["seats"],
