@@ -310,7 +310,6 @@ if current_user == SUPERADMIN_USER:
     pg = st.navigation({"Developer": [st.Page(super_admin_dashboard, title="Master Control", icon="🛡️")]})
     pg.run()
     
-    # Inject footer for super admin as well
     if hasattr(db_utils, 'add_footer'): db_utils.add_footer()
     st.stop()
 
@@ -432,7 +431,9 @@ if user_profile['role'] == "Admin" and college_data["election_mode"] == "Parliam
     college_data["election_years"][election_year]["programs"]["PG"] = [p.strip() for p in pg_input.split('\n') if p.strip()]
     db_utils.save_data(db)
 
-# --- HOME DASHBOARD VIEW ---
+# ==========================================
+# 📊 HOME DASHBOARD VIEW 
+# ==========================================
 def home_page():
     col_logo, col_title = st.columns([1, 6])
     with col_logo:
@@ -447,8 +448,68 @@ def home_page():
         st.markdown(f"<h3 style='color: #5D6D7E; margin-top: -10px;'>College Union Election ({election_year}) - {college_data['election_mode']} Mode</h3>", unsafe_allow_html=True)
 
     st.markdown("---")
-    st.subheader("📊 Institution Election Dashboard")
     
+    # ----------------------------------------
+    # ELECTION STATISTICS DASHBOARD
+    # ----------------------------------------
+    st.subheader("📊 Live Election Statistics")
+    
+    year_data = college_data["election_years"].get(election_year, {})
+    
+    # CALCULATE CLASS REP METRICS
+    class_reps = year_data.get("class_reps", {})
+    total_classes = len(class_reps)
+    cr_total_cands = 0
+    cr_withdrawn = 0
+    cr_elected = 0
+    cr_active = 0
+    
+    for c_name, c_data in class_reps.items():
+        for cand in c_data.get("candidates", []):
+            cr_total_cands += 1
+            status = cand.get("status", "Nominated")
+            if status == "Withdrawn": cr_withdrawn += 1
+            elif status == "Elected": cr_elected += 1
+            elif status == "Nominated": cr_active += 1
+
+    # CALCULATE MAIN POST METRICS
+    main_posts_config = year_data.get("main_posts_config", [])
+    total_main_seats = sum(p.get("seats", 1) for p in main_posts_config)
+    main_cands_data = year_data.get("main_post_candidates", {})
+    
+    mp_total_cands = 0
+    mp_withdrawn = 0
+    mp_elected = 0
+    mp_active = 0
+    
+    for p_name, p_data in main_cands_data.items():
+        for cand in p_data.get("candidates", []):
+            mp_total_cands += 1
+            status = cand.get("status", "Nominated")
+            if status == "Withdrawn": mp_withdrawn += 1
+            elif status == "Elected": mp_elected += 1
+            elif status == "Nominated": mp_active += 1
+
+    # RENDER DASHBOARD COLUMNS
+    if college_data["election_mode"] == "Parliamentary":
+        st.markdown("#### 🧑‍🎓 Class Representatives")
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Total Classes Configured", total_classes)
+        c2.metric("Total Nominations", cr_total_cands)
+        c3.metric("Active Contestants", cr_active, f"-{cr_withdrawn} Withdrawn", delta_color="normal")
+        c4.metric("Elected & Unopposed", cr_elected)
+        st.markdown("---")
+        
+    st.markdown("#### 🏛️ Main Union Posts")
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Total Union Seats", total_main_seats)
+    m2.metric("Total Nominations", mp_total_cands)
+    m3.metric("Active Contestants", mp_active, f"-{mp_withdrawn} Withdrawn", delta_color="normal")
+    m4.metric("Elected & Unopposed", mp_elected)
+    
+    # ----------------------------------------
+    st.markdown("---")
+    st.subheader("💾 Database Management")
     st.download_button(
         label="📥 Download Live Database Backup",
         data=json.dumps(db, indent=4),
