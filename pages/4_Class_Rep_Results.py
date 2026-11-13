@@ -114,7 +114,6 @@ def get_results_excel_bytes_cached(col_name, yr_str, filtered_cls, cls_data_json
     ws.merge_cells('A1:G1'); ws['A1'] = col_name; ws['A1'].font = font_heading; ws['A1'].alignment = align_center
     ws.merge_cells('A2:G2'); ws['A2'] = f"College Union Election {yr_str}"; ws['A2'].font = font_heading; ws['A2'].alignment = align_center
     ws.merge_cells('A3:G3'); ws['A3'] = "LIST OF CLASS REPRESENTATIVES"; ws['A3'].font = font_heading; ws['A3'].alignment = align_center
-    ws.merge_cells('A4:G4'); ws['A4'] = "CLASS REPRESENTATIVE ELECTION"; ws['A4'].font = font_heading; ws['A4'].alignment = align_center
 
     curr_row = 6
     max_used_row = 6
