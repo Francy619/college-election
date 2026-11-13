@@ -116,7 +116,7 @@ if not st.session_state.authenticated:
             st.subheader("Register Institution")
             st.write("Create the master account for your college.")
             with st.form("signup_form"):
-                c_name = st.text_input("Official College Name", value="ST. THOMAS COLLEGE")
+                c_name = st.text_input("Official College Name", value="ST. DOMINIC'S COLLEGE, KANJIRAPALLY")
                 e_mode = st.radio("Election Mode", ["Parliamentary (Indirect - Class Reps First)", "Presidential (Direct - Main Posts Only)"])
                 st.markdown("---")
                 new_user = st.text_input("Choose Admin Username")
