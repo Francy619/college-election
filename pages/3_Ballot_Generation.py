@@ -72,29 +72,31 @@ class BallotPDF(FPDF):
         # ==========================================
         # LEFT SIDE: Counter Foil
         # ==========================================
-        self.set_xy(10, 8 + y_offset) # Shifted up to create more vertical space
-        self.set_font("Times", "", 10)
+        self.set_xy(10, 10 + y_offset)
+        self.set_font("Times", "", 9) 
+        line_ht = 6 
         
-        self.cell(65, 7, "SL. No. _____________________", ln=True)
-        self.cell(65, 7, f"Election to College Union {year_str}", ln=True)
-        self.set_font("Times", "B", 10)
-        self.cell(65, 7, "Counter foil of Ballot Paper", ln=True)
-        self.ln(4) # Clear visual break
+        self.cell(65, line_ht, "SL. No. __________________", ln=True)
+        self.cell(65, line_ht, f"Election to College Union {year_str}", ln=True)
+        self.set_font("Times", "B", 9)
+        self.cell(65, line_ht, "Counter foil of Ballot Paper", ln=True)
+        self.ln(3)
         
-        self.set_font("Times", "", 10)
-        self.cell(65, 7, "Name of the post: Class Representative", ln=True)
-        self.set_font("Times", "B", 11)
-        self.cell(65, 7, f"({class_name})", ln=True)
-        self.set_font("Times", "", 10)
+        self.set_font("Times", "", 9)
+        self.cell(65, line_ht, "Name of the post: Class Representative", ln=True)
+        self.set_font("Times", "B", 10) 
+        self.cell(65, line_ht, f"({class_name})", ln=True)
+        self.set_font("Times", "", 9)
         
-        self.cell(65, 7, f"No. of Seats: {display_seats}", ln=True)
-        self.ln(6) # Clear visual break
+        self.cell(65, line_ht, f"No. of Seats: {display_seats}", ln=True)
+        self.ln(5)
         
-        self.cell(65, 8, "Name of the elector: _______________________", ln=True)
-        self.cell(65, 8, "Electoral Roll No. : _______________________", ln=True)
-        self.cell(65, 8, f"Date of poll: {poll_date_str}", ln=True)
+        line_ht_btm = 7
+        self.cell(65, line_ht_btm, "Name of the elector: ___________________", ln=True)
+        self.cell(65, line_ht_btm, "Electoral Roll No. : ___________________", ln=True)
+        # Date of poll removed from here, moved to absolute bottom
         
-        # Draw vertical perforation line (Moved right to 78 to prevent overlapping)
+        # Draw vertical perforation line (Positioned at 78)
         self.set_line_width(0.4)
         for y in range(int(5 + y_offset), int(143 + y_offset), 4):
             self.line(78, y, 78, y + 2)
@@ -136,18 +138,18 @@ class BallotPDF(FPDF):
         self.set_font("Times", "B", 13)
         self.cell(110, 7, "BALLOT PAPER", ln=True, align="C")
         self.set_x(85)
-        self.set_font("Times", "I", 9) # Smaller italic font, fits on one line cleanly
+        self.set_font("Times", "I", 9) 
         self.cell(110, 5, "(Vote by placing the mark 'X' against the name of the candidate for whom you vote)", ln=True, align="C")
         self.ln(3)
         
         self.set_x(85)
         self.set_font("Times", "B", 11)
         self.cell(20, 8, "Roll No", border=1, align="C")
-        self.cell(65, 8, "Name of the Candidate", border=1, align="C") # Made wider to reduce name shrinking
+        self.cell(65, 8, "Name of the Candidate", border=1, align="C")
         self.cell(25, 8, "Space for Mark", border=1, align="C")
         self.ln()
         
-        row_height = 10 # Ideal 1-centimeter height for stamping an 'X', avoids page crowding
+        row_height = 10 
         header_height = 7
         
         if contesting_males:
@@ -191,6 +193,20 @@ class BallotPDF(FPDF):
                 self.cell(65, row_height, name_text, border=1)
                 self.cell(25, row_height, "", border=1)
                 self.ln()
+
+        # ==========================================
+        # ABSOLUTE BOTTOM POSITIONING (Date of Poll)
+        # ==========================================
+        # Positioned ~10mm above the bottom cut-line
+        self.set_font("Times", "", 9)
+        
+        # 1. Bottom-Left of Counterfoil
+        self.set_xy(10, 138 + y_offset)
+        self.cell(65, 5, f"Date of poll: {poll_date_str}")
+        
+        # 2. Bottom-Left of Main Ballot (So it remains after tearing!)
+        self.set_xy(85, 138 + y_offset)
+        self.cell(65, 5, f"Date of poll: {poll_date_str}")
 
 # --- CACHED PDF GENERATOR ---
 @st.cache_data(show_spinner=False)
