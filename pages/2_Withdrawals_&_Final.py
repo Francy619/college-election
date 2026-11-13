@@ -1,8 +1,7 @@
 import streamlit as st
 import pandas as pd
 from fpdf import FPDF
-import json
-import os
+import db_utils
 
 st.set_page_config(page_title="Withdrawals & Final List", page_icon="🛑", layout="wide")
 
@@ -10,26 +9,15 @@ if not st.session_state.get("authenticated", False):
     st.warning("🔒 Please log in from the Home page to access this module.")
     st.stop()
 
+db = db_utils.load_data()
 current_user = st.session_state.username
-DATA_FILE = "election_data.json"
 
-def load_data():
-    if not os.path.exists(DATA_FILE) or os.path.getsize(DATA_FILE) == 0:
-        return {}
-    try:
-        with open(DATA_FILE, "r") as f:
-            return json.load(f)
-    except json.JSONDecodeError:
-        return {}
+if current_user not in db["users"]: st.stop()
+college_id = db["users"][current_user]["college_id"]
+if college_id not in db["colleges"]: st.stop()
 
-def save_data(data):
-    with open(DATA_FILE, "w") as f:
-        json.dump(data, f, indent=4)
-
-db = load_data()
-user_profile = db.get("users", {}).get(current_user, {})
-college_name = user_profile.get("college_name", "COLLEGE UNION ELECTION")
-college_data = db.get(current_user, {})
+college_data = db["colleges"][college_id]
+college_name = college_data.get("college_name", "COLLEGE UNION ELECTION")
 
 class ElectionPDF(FPDF):
     def consolidated_candidate_list(self, title, data_dict, year_str, college_name, is_class=True):
@@ -72,13 +60,13 @@ class ElectionPDF(FPDF):
 st.title("🛑 Scrutiny & Withdrawals")
 st.markdown("Manage candidate withdrawals and generate the final list of valid contestants for the ballot.")
 
-if not college_data:
+if "election_years" not in college_data or not college_data["election_years"]:
     st.warning("No election data found. Please set up the election first.")
     st.stop()
 
-available_years = list(college_data.keys())
+available_years = list(college_data["election_years"].keys())
 selected_year = st.selectbox("Select Election Year", available_years, index=len(available_years)-1)
-year_data = college_data[selected_year]
+year_data = college_data["election_years"][selected_year]
 
 if "class_reps" not in year_data or not year_data["class_reps"]:
     st.info("No class representatives have been nominated for this year yet.")
@@ -129,7 +117,7 @@ if st.button("💾 Save Status Changes", type="primary"):
             if c["id"] == cand_id:
                 c["status"] = new_status
                 break
-    save_data(db)
+    db_utils.save_data(db)
     st.success("Candidate statuses updated successfully!")
     st.rerun()
 
