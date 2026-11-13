@@ -73,20 +73,20 @@ class BallotPDF(FPDF):
         # LEFT SIDE: Counter Foil
         # ==========================================
         self.set_xy(10, 10 + y_offset)
-        self.set_font("Times", "", 9) 
-        line_ht = 6 
+        self.set_font("Times", "", 8) 
+        line_ht = 8 
         
         self.cell(65, line_ht, "SL. No. __________________", ln=True)
         self.cell(65, line_ht, f"Election to College Union {year_str}", ln=True)
-        self.set_font("Times", "B", 9)
+        self.set_font("Times", "B", 8)
         self.cell(65, line_ht, "Counter foil of Ballot Paper", ln=True)
         self.ln(3)
         
-        self.set_font("Times", "", 9)
+        self.set_font("Times", "", 8)
         self.cell(65, line_ht, "Name of the post: Class Representative", ln=True)
-        self.set_font("Times", "B", 10) 
+        self.set_font("Times", "B", 9) 
         self.cell(65, line_ht, f"({class_name})", ln=True)
-        self.set_font("Times", "", 9)
+        self.set_font("Times", "", 8)
         
         self.cell(65, line_ht, f"No. of Seats: {display_seats}", ln=True)
         self.ln(5)
@@ -105,26 +105,26 @@ class BallotPDF(FPDF):
         # RIGHT SIDE: Main Ballot Headers
         # ==========================================
         self.set_xy(85, 8 + y_offset)
-        self.set_font("Times", "", 10)
+        self.set_font("Times", "", 8)
         self.cell(50, 6, "SL. No. _________________")
         self.cell(60, 6, "Signature of the RO..................", ln=True, align="R")
         self.ln(2)
         
         self.set_x(85)
-        self.set_font("Times", "B", 12)
+        self.set_font("Times", "B", 10)
         self.cell(110, 6, college_name, ln=True, align="C")
         self.set_x(85)
-        self.set_font("Times", "", 11)
+        self.set_font("Times", "", 10)
         self.cell(110, 6, f"Election to College Union {year_str}", ln=True, align="C")
         self.ln(4)
         
         self.set_x(85)
         str_start = "Name of the post: Class representative ("
-        self.set_font("Times", "", 11)
+        self.set_font("Times", "", 10)
         self.cell(self.get_string_width(str_start), 6, str_start)
-        self.set_font("Times", "B", 11)
+        self.set_font("Times", "B", 10)
         self.cell(self.get_string_width(class_name), 6, class_name)
-        self.set_font("Times", "", 11)
+        self.set_font("Times", "", 10)
         self.cell(self.get_string_width(")"), 6, ")", ln=True)
         
         self.set_x(85)
@@ -204,9 +204,6 @@ class BallotPDF(FPDF):
         self.set_xy(10, 138 + y_offset)
         self.cell(65, 5, f"Date of poll: {poll_date_str}")
         
-        # 2. Bottom-Left of Main Ballot (So it remains after tearing!)
-        self.set_xy(85, 138 + y_offset)
-        self.cell(65, 5, f"Date of poll: {poll_date_str}")
 
 # --- CACHED PDF GENERATOR ---
 @st.cache_data(show_spinner=False)
