@@ -1,9 +1,12 @@
-def load_data():
-    if not os.path.exists(DATA_FILE) or os.path.getsize(DATA_FILE) == 0:
-        return {}
-    try:
-        with open(DATA_FILE, "r") as f:
-            return json.load(f)
-    except json.JSONDecodeError:
-        # If the file is corrupted, return empty dict instead of crashing
-        return {}
+{
+  "users": {
+    "admin": {
+      "password": "password123",
+      "recovery_hint": "college"
+    }
+  },
+  "2026-27": {
+    "poll_date": "",
+    "programs": { ... }
+  }
+}
