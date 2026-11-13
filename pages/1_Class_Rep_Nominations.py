@@ -40,9 +40,6 @@ class NominationPDF(FPDF):
         self.set_font("Arial", "B", 11)
         self.cell(0, 6, "LIST OF VALID NOMINATIONS OF CLASS REPRESENTATIVE ELECTION", ln=True, align="C")
         
-        self.set_font("Arial", "B", 10)
-        self.cell(0, 6, f"Category: {self.category_str}", ln=True, align="C")
-        self.ln(5)
 
     def draw_class_table(self, class_name, candidates, start_x, start_y):
         self.set_xy(start_x, start_y)
@@ -51,7 +48,7 @@ class NominationPDF(FPDF):
         
         self.set_xy(start_x, start_y + 6)
         self.set_font("Arial", "B", 9)
-        self.cell(20, 6, "Roll No", border=1, align="C")
+        self.cell(20, 6, "Electrol Roll No", border=1, align="C")
         self.cell(55, 6, "Name", border=1, align="C")
         self.cell(15, 6, "Gender", border=1, align="C")
         
