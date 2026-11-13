@@ -8,15 +8,15 @@ DATA_FILE = "election_data.json"
 
 def load_data():
     if not os.path.exists(DATA_FILE) or os.path.getsize(DATA_FILE) == 0:
-        return {"users": {"admin": {"password": "adminpassword", "recovery_hint": "admin"}}}
+        return {"users": {}}
     try:
         with open(DATA_FILE, "r") as f:
             data = json.load(f)
             if "users" not in data:
-                data["users"] = {"admin": {"password": "adminpassword", "recovery_hint": "admin"}}
+                data["users"] = {}
             return data
     except json.JSONDecodeError:
-        return {"users": {"admin": {"password": "adminpassword", "recovery_hint": "admin"}}}
+        return {"users": {}}
 
 def save_data(data):
     with open(DATA_FILE, "w") as f:
@@ -35,17 +35,16 @@ if "username" not in st.session_state:
 
 # --- LOGIN / AUTHENTICATION SCREEN ---
 if not st.session_state.authenticated:
-    st.markdown("<h2 style='text-align: center; color: #2E4053;'>ST. DOMINIC'S COLLEGE, KANJIRAPALLY</h2>", unsafe_allow_html=True)
-    st.markdown("<h4 style='text-align: center; color: #5D6D7E;'>College Union Election Management Portal</h4><br>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center; color: #2E4053;'>COLLEGE UNION ELECTION PORTAL</h2>", unsafe_allow_html=True)
+    st.markdown("<h4 style='text-align: center; color: #5D6D7E;'>Multi-Institution Election Management System</h4><br>", unsafe_allow_html=True)
     
     col1, col2, col3 = st.columns([1, 1.5, 1])
     
     with col2:
-        auth_tab1, auth_tab2, auth_tab3 = st.tabs(["🔑 Login", "📝 Create Account", "🔄 Forgot Password"])
+        auth_tab1, auth_tab2, auth_tab3 = st.tabs(["🔑 Login", "📝 Register College", "🔄 Forgot Password"])
         
-        # TAB 1: LOGIN
         with auth_tab1:
-            st.subheader("Returning Officer Login")
+            st.subheader("Institution Login")
             with st.form("login_form"):
                 u_input = st.text_input("Username")
                 p_input = st.text_input("Password", type="password")
@@ -61,31 +60,35 @@ if not st.session_state.authenticated:
                     else:
                         st.error("Invalid username or password.")
                         
-        # TAB 2: CREATE ACCOUNT
         with auth_tab2:
-            st.subheader("Register New Account")
+            st.subheader("Register New College Portal")
             with st.form("signup_form"):
-                new_user = st.text_input("Choose Username")
+                new_user = st.text_input("Choose Username (e.g., st_thomas_pala)")
                 new_pass = st.text_input("Choose Password", type="password")
-                hint = st.text_input("Password Recovery Hint (e.g., Your favorite pet name)")
-                signup_btn = st.form_submit_button("Register Account")
+                c_name = st.text_input("Official College Name", value="ST. THOMAS COLLEGE")
+                hint = st.text_input("Password Recovery Hint")
+                signup_btn = st.form_submit_button("Create Institution Account")
                 
                 if signup_btn:
-                    if not new_user or not new_pass or not hint:
-                        st.warning("Please fill in all fields.")
+                    if not new_user or not new_pass or not c_name:
+                        st.warning("Please fill in all mandatory fields.")
                     elif new_user in db["users"]:
-                        st.error("Username already exists. Choose another.")
+                        st.error("Username already taken.")
                     else:
-                        db["users"][new_user] = {"password": new_pass, "recovery_hint": hint}
+                        db["users"][new_user] = {
+                            "password": new_pass,
+                            "recovery_hint": hint,
+                            "college_name": c_name.upper(),
+                            "logo_path": ""
+                        }
                         save_data(db)
-                        st.success("Account created successfully! You can now log in using the Login tab.")
+                        st.success("Account created successfully! Switch to the Login tab.")
                         
-        # TAB 3: FORGOT PASSWORD
         with auth_tab3:
             st.subheader("Password Recovery")
             with st.form("forgot_form"):
-                f_user = st.text_input("Enter your Username")
-                f_hint = st.text_input("Enter your Recovery Hint Answer")
+                f_user = st.text_input("Username")
+                f_hint = st.text_input("Recovery Hint Answer")
                 recover_btn = st.form_submit_button("Recover Password")
                 
                 if recover_btn:
@@ -98,35 +101,54 @@ if not st.session_state.authenticated:
                     else:
                         st.error("Username not found.")
                         
-    st.stop() # Stop execution here so unauthorized users cannot see the rest of the app
+    st.stop()
 
-# --- LOGOUT & USER INFO IN SIDEBAR ---
-st.sidebar.write(f"👤 Logged in as: **{st.session_state.username}**")
+# --- CURRENT USER PROFILE SETUP ---
+current_user = st.session_state.username
+user_profile = db["users"][current_user]
+
+if current_user not in db:
+    db[current_user] = {}
+    save_data(db)
+
+college_data = db[current_user]
+
+# --- SIDEBAR CONTROLS ---
+st.sidebar.write(f"👤 Logged in as: **{current_user}**")
 if st.sidebar.button("🚪 Logout"):
     st.session_state.authenticated = False
     st.session_state.username = ""
     st.rerun()
 
 st.sidebar.markdown("---")
+st.sidebar.header("🏛️ Institution Settings")
 
-# --- INITIALIZE DEFAULTS IN SESSION STATE ---
-if "ug_text" not in st.session_state:
-    st.session_state.ug_text = "B. Sc Mathematics\nB. Sc Physics\nB. Sc Chemistry\nB. Sc Botany\nB. Sc Zoology\nB. A English\nB. A Economics\nB. A History\nB. Com F&T\nB. Com FM\nB. Com LM\nB. Com Accounting\nB. Voc Agriculture Technology\nBCA\nBBA"
-if "pg_text" not in st.session_state:
-    st.session_state.pg_text = "M. Sc Mathematics\nM. Sc Physics\nM. Sc Chemistry\nM. Sc Botany\nM. Sc Zoology\nM. A English\nM. A Economics\nM. A History\nM. Com"
+updated_college_name = st.sidebar.text_input("College Name", value=user_profile.get("college_name", "MY COLLEGE"))
+if updated_college_name != user_profile.get("college_name"):
+    user_profile["college_name"] = updated_college_name.upper()
+    save_data(db)
 
-# --- GLOBAL SETTINGS (SIDEBAR) ---
-st.sidebar.header("Global Settings")
+uploaded_logo = st.sidebar.file_uploader("Upload College Logo (PNG/JPG)", type=["png", "jpg", "jpeg"])
+if uploaded_logo is not None:
+    os.makedirs("logos", exist_ok=True)
+    logo_filename = f"logos/{current_user}_logo.png"
+    with open(logo_filename, "wb") as f:
+        f.write(uploaded_logo.getbuffer())
+    user_profile["logo_path"] = logo_filename
+    save_data(db)
+    st.sidebar.success("Logo updated!")
+
+st.sidebar.markdown("---")
+st.sidebar.header("Global Election Settings")
 election_year = st.sidebar.text_input("Election Year", value="2026-27")
-poll_date = st.sidebar.text_input("Date of Poll (e.g., 14-Nov-2026)", value="")
+poll_date = st.sidebar.text_input("Date of Poll", value="")
 
-# Ensure year structure exists in database
-if election_year not in db:
-    db[election_year] = {
+if election_year not in college_data:
+    college_data[election_year] = {
         "poll_date": poll_date,
         "programs": {
-            "UG": [p.strip() for p in st.session_state.ug_text.split('\n') if p.strip()],
-            "PG": [p.strip() for p in st.session_state.pg_text.split('\n') if p.strip()]
+            "UG": ["B. Sc Mathematics", "B. Sc Physics", "B. Com", "BBA", "BCA"],
+            "PG": ["M. Sc Mathematics", "M. Com", "M. A English"]
         },
         "class_reps": {},
         "main_posts_config": [
@@ -138,48 +160,52 @@ if election_year not in db:
     }
     save_data(db)
 else:
-    db[election_year]["poll_date"] = poll_date
+    college_data[election_year]["poll_date"] = poll_date
     save_data(db)
 
 st.sidebar.markdown("---")
 st.sidebar.header("Program List Manager")
 st.sidebar.write("Edit college programs below (one per line):")
 
-ug_input = st.sidebar.text_area("UG Programs", key="ug_text", height=220)
-pg_input = st.sidebar.text_area("PG Programs", key="pg_text", height=180)
+ug_text = "\n".join(college_data[election_year]["programs"].get("UG", []))
+pg_text = "\n".join(college_data[election_year]["programs"].get("PG", []))
 
-db[election_year]["programs"]["UG"] = [p.strip() for p in ug_input.split('\n') if p.strip()]
-db[election_year]["programs"]["PG"] = [p.strip() for p in pg_input.split('\n') if p.strip()]
+ug_input = st.sidebar.text_area("UG Programs", value=ug_text, height=150)
+pg_input = st.sidebar.text_area("PG Programs", value=pg_text, height=150)
+
+college_data[election_year]["programs"]["UG"] = [p.strip() for p in ug_input.split('\n') if p.strip()]
+college_data[election_year]["programs"]["PG"] = [p.strip() for p in pg_input.split('\n') if p.strip()]
 save_data(db)
 
-# --- DEFINE HOME PAGE VIEW ---
+# --- HOME DASHBOARD VIEW ---
 def home_page():
     col_logo, col_title = st.columns([1, 6])
     with col_logo:
-        if os.path.exists("logo.png"):
-            st.image("logo.png", width=120) 
+        logo_path = user_profile.get("logo_path", "")
+        if logo_path and os.path.exists(logo_path):
+            st.image(logo_path, width=120)
         else:
-            st.markdown("<div style='height: 120px; width: 120px; border: 2px dashed #ccc; display: flex; align-items: center; justify-content: center;'><small>Add logo.png</small></div>", unsafe_allow_html=True)
+            st.markdown("<div style='height: 100px; width: 100px; border: 2px dashed #ccc; display: flex; align-items: center; justify-content: center;'><small>No Logo</small></div>", unsafe_allow_html=True)
+            
     with col_title:
-        st.markdown("<h1 style='color: #2E4053; margin-top: -15px;'>ST. DOMINIC'S COLLEGE, KANJIRAPALLY</h1>", unsafe_allow_html=True)
+        st.markdown(f"<h1 style='color: #2E4053; margin-top: -15px;'>{user_profile.get('college_name')}</h1>", unsafe_allow_html=True)
         st.markdown(f"<h3 style='color: #5D6D7E; margin-top: -10px;'>College Union Election Management ({election_year})</h3>", unsafe_allow_html=True)
 
     st.markdown("---")
+    st.subheader("📊 Institution Election Dashboard")
+    st.write(f"Welcome back! You are viewing secure, isolated election data for **{user_profile.get('college_name')}** ({election_year}).")
 
-    st.subheader("📊 Election Dashboard")
-    st.write(f"Welcome back, **{st.session_state.username}**! You are managing records for **Academic Year {election_year}**.")
-
-    year_data = db[election_year]
+    year_data = college_data[election_year]
     class_reps_data = year_data.get("class_reps", {})
 
-    total_classes_configured = len(class_reps_data)
-    total_nominations = sum(len(c_data["candidates"]) for c_data in class_reps_data.values())
-    total_withdrawn = sum(len([c for c in c_data["candidates"] if c.get("status") == "Withdrawn"]) for c_data in class_reps_data.values())
-    total_active = total_nominations - total_withdrawn
+    total_classes = len(class_reps_data)
+    total_noms = sum(len(c["candidates"]) for c in class_reps_data.values())
+    total_withdrawn = sum(len([c for c in c["candidates"] if c.get("status") == "Withdrawn"]) for c_data in class_reps_data.values() for c in c_data["candidates"])
+    total_active = total_noms - total_withdrawn
 
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Classes with Nominations", total_classes_configured)
-    m2.metric("Total Nominations", total_nominations)
+    m1.metric("Configured Classes", total_classes)
+    m2.metric("Total Nominations", total_noms)
     m3.metric("Withdrawn Candidates", total_withdrawn)
     m4.metric("Active Contestants", total_active)
 
