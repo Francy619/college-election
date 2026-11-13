@@ -24,6 +24,11 @@ college_name = college_data.get("college_name", "COLLEGE UNION ELECTION")
 
 # --- PDF GENERATOR CLASS ---
 class BallotPDF(FPDF):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Turn OFF auto page breaks so the bottom ballot's Date of Poll NEVER jumps to a new page
+        self.set_auto_page_break(auto=False, margin=0)
+
     def generate_ballots(self, class_list, class_reps_data, year_str, poll_date_str, college_name):
         valid_classes = []
         
@@ -94,7 +99,6 @@ class BallotPDF(FPDF):
         line_ht_btm = 7
         self.cell(65, line_ht_btm, "Name of the elector: ___________________", ln=True)
         self.cell(65, line_ht_btm, "Electoral Roll No. : ___________________", ln=True)
-        # Date of poll removed from here, moved to absolute bottom
         
         # Draw vertical perforation line (Positioned at 78)
         self.set_line_width(0.4)
@@ -104,13 +108,17 @@ class BallotPDF(FPDF):
         # ==========================================
         # RIGHT SIDE: Main Ballot Headers
         # ==========================================
+        # SL No stays at the very top (Y=8)
         self.set_xy(85, 8 + y_offset)
         self.set_font("Times", "", 8)
         self.cell(50, 6, "SL. No. _________________")
-        self.cell(60, 6, "Signature of the RO..................", ln=True, align="R")
-        self.ln(2)
         
-        self.set_x(85)
+        # Signature is pushed down to Y=18 to leave a large empty space ABOVE it for the RO Seal
+        self.set_xy(145, 18 + y_offset)
+        self.cell(50, 6, "Signature of the RO..................", align="R")
+        
+        # College Name resumes below the signature (Y=25)
+        self.set_xy(85, 25 + y_offset)
         self.set_font("Times", "B", 10)
         self.cell(110, 6, college_name, ln=True, align="C")
         self.set_x(85)
@@ -197,11 +205,9 @@ class BallotPDF(FPDF):
         # ==========================================
         # ABSOLUTE BOTTOM POSITIONING (Date of Poll)
         # ==========================================
-        # Positioned ~20mm above the bottom cut-line
+        # Positioned exactly 135mm down to safely avoid hardware printer margins
         self.set_font("Times", "", 9)
-        
-        # 1. Bottom-Left of Counterfoil
-        self.set_xy(10, 138 + y_offset)
+        self.set_xy(10, 135 + y_offset)
         self.cell(65, 5, f"Date of poll: {poll_date_str}")
         
 
