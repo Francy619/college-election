@@ -36,8 +36,7 @@ class MainNominationPDF(FPDF):
         self.set_font("Times", "B", 14)
         self.cell(0, 8, getattr(self, 'college_name_val', ''), ln=True, align="C")
         self.cell(0, 8, f"College Union Election {getattr(self, 'year_str', '')}", ln=True, align="C")
-        self.cell(0, 8, "LIST OF VALID NOMINATIONS OF", ln=True, align="C")
-        self.cell(0, 8, "MAIN POST ELECTION", ln=True, align="C")
+        self.cell(0, 8, "LIST OF VALID NOMINATIONS", ln=True, align="C")
         self.ln(10)
 
     def footer(self):
@@ -46,8 +45,15 @@ class MainNominationPDF(FPDF):
         self.cell(0, 10, "Returning Officer", align="R")
 
     def draw_post_table(self, post_name, candidates):
-        self.set_font("Times", "B", 14)
-        self.cell(0, 10, f"Post: {post_name}", ln=True, align="L")
+        # Auto-shrink logic for extremely long post names to keep them perfectly centered
+        font_sz_title = 14
+        self.set_font("Times", "B", font_sz_title)
+        while self.get_string_width(post_name) > 180 and font_sz_title > 8:
+            font_sz_title -= 0.5
+            self.set_font("Times", "B", font_sz_title)
+            
+        # Post name centered, no "Post: " prefix
+        self.cell(0, 10, post_name, ln=True, align="C")
         
         # Table Headers (Full Width = 190mm)
         self.set_font("Times", "B", 12)
@@ -63,7 +69,7 @@ class MainNominationPDF(FPDF):
             self.cell(15, 10, str(idx + 1), border=1, align="C")
             self.cell(30, 10, str(cand["roll_no"]), border=1, align="C")
             
-            # Auto-shrink logic for name
+            # Auto-shrink logic for candidate name
             name_text = str(cand["name"])
             font_sz = 12
             self.set_font("Times", "", font_sz)
@@ -111,16 +117,16 @@ def get_main_excel_bytes_cached(col_name, yr_str, active_posts, post_data_json):
 
     ws.merge_cells('A1:E1'); ws['A1'] = col_name; ws['A1'].font = font_heading; ws['A1'].alignment = align_center
     ws.merge_cells('A2:E2'); ws['A2'] = f"College Union Election {yr_str}"; ws['A2'].font = font_heading; ws['A2'].alignment = align_center
-    ws.merge_cells('A3:E3'); ws['A3'] = "LIST OF VALID NOMINATIONS OF"; ws['A3'].font = font_heading; ws['A3'].alignment = align_center
-    ws.merge_cells('A4:E4'); ws['A4'] = "MAIN POST ELECTION"; ws['A4'].font = font_heading; ws['A4'].alignment = align_center
+    ws.merge_cells('A3:E3'); ws['A3'] = "LIST OF VALID NOMINATIONS"; ws['A3'].font = font_heading; ws['A3'].alignment = align_center
 
-    curr_row = 6
+    curr_row = 5
     
     for post in active_posts:
         active_cands = sorted([c for c in post_data[post]["candidates"] if c.get("status") == "Nominated"], key=lambda x: x["name"])
         
         ws.merge_cells(start_row=curr_row, start_column=1, end_row=curr_row, end_column=5)
-        c_post = ws.cell(row=curr_row, column=1, value=f"Post: {post}"); c_post.font = font_heading; c_post.alignment = align_left
+        # Post name centered, no "Post: " prefix
+        c_post = ws.cell(row=curr_row, column=1, value=post); c_post.font = font_heading; c_post.alignment = align_center
         
         ws.cell(row=curr_row+1, column=1, value="SL No").font = font_header; ws.cell(row=curr_row+1, column=1).alignment = align_center; ws.cell(row=curr_row+1, column=1).border = border_thin
         ws.cell(row=curr_row+1, column=2, value="Roll No").font = font_header; ws.cell(row=curr_row+1, column=2).alignment = align_center; ws.cell(row=curr_row+1, column=2).border = border_thin
@@ -137,7 +143,7 @@ def get_main_excel_bytes_cached(col_name, yr_str, active_posts, post_data_json):
             ws.cell(row=r, column=5, value="M" if c["gender"]=="Male" else "F").font = font_data; ws.cell(row=r, column=5).alignment = align_center; ws.cell(row=r, column=5).border = border_thin
             r += 1
             
-        curr_row = r + 1
+        curr_row = r + 2 # Extra spacing between posts
 
     for row_idx in range(1, curr_row): ws.row_dimensions[row_idx].height = 20
     buffer = io.BytesIO()
@@ -290,48 +296,56 @@ else:
 
     st.markdown("---")
     
-    current_post_cands = main_post_data.get(selected_post, {}).get("candidates", [])
-    active_current_cands = sorted([c for c in current_post_cands if c.get("status") == "Nominated"], key=lambda x: x["name"])
-    
-    if active_current_cands:
-        st.markdown(f"#### Edit Candidates for: {selected_post}")
-        
-        df = pd.DataFrame(active_current_cands)
-        display_df = df[["roll_no", "name", "class_name", "gender"]].rename(
-            columns={"roll_no": "Roll No", "name": "Candidate Name", "class_name": "Class", "gender": "Gender"}
-        )
-        st.dataframe(display_df, use_container_width=True, hide_index=True)
-        
-        with st.expander(f"✏️ Edit or Delete entry from {selected_post}"):
-            cand_to_edit_id = st.selectbox(
-                "Select candidate to edit:", 
-                options=[c["id"] for c in active_current_cands],
-                format_func=lambda x: next(c["name"] for c in active_current_cands if c["id"] == x),
-                key=f"edit_box_{selected_post}"
-            )
+    # Display all configured posts containing active nominations, one by one
+    for post_cfg in posts_config:
+        p_name = post_cfg["post_name"]
+        if p_name in main_post_data:
+            current_post_cands = main_post_data[p_name].get("candidates", [])
+            active_current_cands = sorted([c for c in current_post_cands if c.get("status") == "Nominated"], key=lambda x: x["name"])
             
-            selected_cand = next(c for c in active_current_cands if c["id"] == cand_to_edit_id)
-            
-            c_e1, c_e2, c_e3, c_e4 = st.columns([1, 2, 2, 1])
-            new_roll = c_e1.number_input("Roll No.", value=int(selected_cand["roll_no"]), step=1, key=f"r_{cand_to_edit_id}")
-            new_name = c_e2.text_input("Name", value=selected_cand["name"], key=f"n_{cand_to_edit_id}").upper()
-            new_class = c_e3.text_input("Class", value=selected_cand.get("class_name", ""), key=f"c_{cand_to_edit_id}")
-            new_gender = c_e4.selectbox("Gender", ["Male", "Female"], index=0 if selected_cand["gender"]=="Male" else 1, key=f"g_{cand_to_edit_id}")
-            
-            b1, b2 = st.columns(2)
-            if b1.button("💾 Save Changes", type="primary", key=f"save_{cand_to_edit_id}"):
-                for c in main_post_data[selected_post]["candidates"]:
-                    if c["id"] == cand_to_edit_id:
-                        c["roll_no"] = new_roll
-                        c["name"] = new_name
-                        c["class_name"] = new_class
-                        c["gender"] = new_gender
-                db_utils.save_data(db)
-                st.rerun()
+            if active_current_cands:
+                st.markdown(f"#### {p_name}")
                 
-            if b2.button("🗑️ Delete Entry", key=f"del_{cand_to_edit_id}"):
-                year_data["main_post_candidates"][selected_post]["candidates"] = [
-                    c for c in current_post_cands if c["id"] != cand_to_edit_id
-                ]
-                db_utils.save_data(db)
-                st.rerun()
+                df = pd.DataFrame(active_current_cands)
+                display_df = df[["roll_no", "name", "class_name", "gender"]].rename(
+                    columns={"roll_no": "Roll No", "name": "Candidate Name", "class_name": "Class", "gender": "Gender"}
+                )
+                st.dataframe(display_df, use_container_width=True, hide_index=True)
+                
+                with st.expander(f"✏️ Edit or Delete entry from {p_name}"):
+                    cand_to_edit_id = st.selectbox(
+                        "Select candidate to edit:", 
+                        options=[c["id"] for c in active_current_cands],
+                        format_func=lambda x: next(c["name"] for c in active_current_cands if c["id"] == x),
+                        key=f"edit_box_{p_name}"
+                    )
+                    
+                    selected_cand = next(c for c in active_current_cands if c["id"] == cand_to_edit_id)
+                    
+                    c_e1, c_e2, c_e3, c_e4 = st.columns([1, 2, 2, 1])
+                    new_roll = c_e1.number_input("Roll No.", value=int(selected_cand["roll_no"]), step=1, key=f"r_{cand_to_edit_id}")
+                    new_name = c_e2.text_input("Name", value=selected_cand["name"], key=f"n_{cand_to_edit_id}").upper()
+                    new_class = c_e3.text_input("Class", value=selected_cand.get("class_name", ""), key=f"c_{cand_to_edit_id}")
+                    new_gender = c_e4.selectbox("Gender", ["Male", "Female"], index=0 if selected_cand["gender"]=="Male" else 1, key=f"g_{cand_to_edit_id}")
+                    
+                    b1, b2 = st.columns(2)
+                    if b1.button("💾 Save Changes", type="primary", key=f"save_{cand_to_edit_id}"):
+                        for c in main_post_data[p_name]["candidates"]:
+                            if c["id"] == cand_to_edit_id:
+                                c["roll_no"] = new_roll
+                                c["name"] = new_name
+                                c["class_name"] = new_class
+                                c["gender"] = new_gender
+                        db_utils.save_data(db)
+                        st.rerun()
+                        
+                    if b2.button("🗑️ Delete Entry", key=f"del_{cand_to_edit_id}"):
+                        year_data["main_post_candidates"][p_name]["candidates"] = [
+                            c for c in current_post_cands if c["id"] != cand_to_edit_id
+                        ]
+                        db_utils.save_data(db)
+                        st.rerun()
+
+# --- INJECT FOOTER ---
+if hasattr(db_utils, 'add_footer'):
+    db_utils.add_footer()
