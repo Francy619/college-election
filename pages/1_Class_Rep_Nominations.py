@@ -30,21 +30,23 @@ logo_path = college_data.get("logo_path", "")
 # --- PDF GENERATOR CLASS ---
 class NominationPDF(FPDF):
     def header(self):
-        # Draw Logo if exists (Dynamically reads from instance variables)
         if hasattr(self, 'logo_path_val') and self.logo_path_val and os.path.exists(self.logo_path_val):
             self.image(self.logo_path_val, 10, 8, w=20)
             
         self.set_font("Times", "B", 14)
         self.cell(0, 8, getattr(self, 'college_name_val', ''), ln=True, align="C")
-        
         self.cell(0, 8, f"College Union Election {getattr(self, 'year_str', '')}", ln=True, align="C")
-        
-        # Split heading to prevent overlap with logo
         self.cell(0, 8, "LIST OF VALID NOMINATIONS OF", ln=True, align="C")
         self.cell(0, 8, "CLASS REPRESENTATIVE ELECTION", ln=True, align="C")
-        
-        # Extra gap after the main headings
         self.ln(10)
+
+    # NEW FOOTER ADDED HERE
+    def footer(self):
+        # Position at 15 mm from bottom
+        self.set_y(-15)
+        self.set_font("Times", "B", 12)
+        # Width 0 spans the whole page, align 'R' puts it on the right
+        self.cell(0, 10, "Returning Officer", align="R")
 
     def draw_class_table(self, class_name, candidates, start_x, start_y):
         self.set_xy(start_x, start_y)
@@ -73,7 +75,6 @@ class NominationPDF(FPDF):
             self.set_font("Times", "", 12)
             self.cell(25, 8, str(cand["roll_no"]), border=1, align="C")
             
-            # Auto-shrink font logic for lengthy names
             name_text = str(cand["name"])
             font_sz = 12
             self.set_font("Times", "", font_sz)
@@ -90,7 +91,7 @@ class NominationPDF(FPDF):
             
         return curr_y
 
-# --- CACHED FILE GENERATORS (For Instant 1-Click Downloads) ---
+# --- CACHED FILE GENERATORS ---
 @st.cache_data(show_spinner=False)
 def get_excel_bytes_cached(col_name, yr_str, filtered_cls, cls_data_json):
     cls_data = json.loads(cls_data_json)
@@ -158,7 +159,7 @@ def get_excel_bytes_cached(col_name, yr_str, filtered_cls, cls_data_json):
         curr_row = max(r_left, r_right) + 2
         max_used_row = max(max_used_row, curr_row)
 
-    for r in range(1, max_used_row): ws.row_dimensions[r].height = 20
+    for r in range(1, max_used_row + 2): ws.row_dimensions[r].height = 20
     buffer = io.BytesIO()
     wb.save(buffer)
     return buffer.getvalue()
@@ -182,9 +183,10 @@ def get_pdf_bytes_cached(col_name, yr_str, filtered_cls, cls_data_json, logo_p):
         right_cands = sorted([c for c in cls_data[right_class]["candidates"] if c.get("status") == "Nominated"], key=lambda x: x["name"]) if right_class else []
         
         max_cands = max(len(left_cands), len(right_cands))
+        # Account for footer space (15mm) when calculating page breaks
         estimated_height = 20 + (max_cands * 8)
         
-        if pdf.get_y() + estimated_height > 270:
+        if pdf.get_y() + estimated_height > 260:
             pdf.add_page()
             
         start_y = pdf.get_y()
@@ -288,7 +290,6 @@ if not filtered_classes:
 else:
     col_export1, col_export2 = st.columns([1, 1])
     
-    # Generate data strings for cache
     cls_data_json_str = json.dumps(class_reps_data)
     
     with col_export1:
