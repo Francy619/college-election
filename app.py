@@ -309,6 +309,9 @@ if current_user == SUPERADMIN_USER:
 
     pg = st.navigation({"Developer": [st.Page(super_admin_dashboard, title="Master Control", icon="🛡️")]})
     pg.run()
+    
+    # Inject footer for super admin as well
+    if hasattr(db_utils, 'add_footer'): db_utils.add_footer()
     st.stop()
 
 
@@ -454,28 +457,36 @@ def home_page():
     )
 
 # --- DYNAMIC NAVIGATION LOGIC ---
-overview_pages = [st.Page(home_page, title="Dashboard Home", icon="📊")]
-workflow_pages = []
+home_page_obj = st.Page(home_page, title="Dashboard Home", icon="📊", default=True)
 
+nav_dict = {
+    "Overview": [home_page_obj]
+}
+
+# 1. Class Representative Pages (Only show if in Parliamentary Mode)
 if college_data["election_mode"] == "Parliamentary":
-    workflow_pages.extend([
-        st.Page("pages/1_Class_Rep_Nominations.py", title="1. Class Rep Nominations", icon="📝"),
-        st.Page("pages/2_Withdrawals_&_Final.py", title="2. Scrutiny & Withdrawals", icon="🛑"),
-        st.Page("pages/3_Ballot_Generation.py", title="3. Class Rep Ballots", icon="🖨️"),
-        st.Page("pages/4_Class_Rep_Results.py", title="4. Class Rep Results", icon="🏆"),
-    ])
+    nav_dict["Class Representative"] = [
+        st.Page("pages/1_Class_Rep_Nominations.py", title="1. Nominations", icon="📝"),
+        st.Page("pages/2_Withdrawals_&_Final.py", title="2. Withdrawals & Final", icon="🛑"),
+        st.Page("pages/3_Ballot_Generation.py", title="3. Ballots", icon="🖨️"),
+        st.Page("pages/4_Class_Rep_Results.py", title="4. Results", icon="🏆")
+    ]
 
-p_prefix = "5" if college_data["election_mode"] == "Parliamentary" else "1"
-e_prefix = "6" if college_data["election_mode"] == "Parliamentary" else "2"
+# 2. Main Union Post Pages (Dynamically numbered depending on Election Mode)
+p_prefix = 5 if college_data["election_mode"] == "Parliamentary" else 1
 
-workflow_pages.extend([
-    st.Page("pages/5_Main_Post_Config.py", title=f"{p_prefix}. Main Post Config", icon="⚙️"),
-    st.Page("pages/6_Main_Post_Elections.py", title=f"{e_prefix}. Main Post Elections", icon="🗳️")
-])
+nav_dict["Main Union Posts"] = [
+    st.Page("pages/5_Main_Post_Configuration.py", title=f"{p_prefix}. Configuration", icon="⚙️"),
+    st.Page("pages/6_Main_Post_Nominations.py", title=f"{p_prefix+1}. Nominations", icon="📝"),
+    st.Page("pages/7_Main_Post_Withdrawals.py", title=f"{p_prefix+2}. Withdrawals & Final", icon="🛑"),
+    st.Page("pages/8_Main_Post_Ballots.py", title=f"{p_prefix+3}. Ballots", icon="🖨️"),
+    st.Page("pages/9_Main_Post_Results.py", title=f"{p_prefix+4}. Results", icon="🏆")
+]
 
-pg = st.navigation({
-    "Overview": overview_pages,
-    "Election Workflow": workflow_pages
-})
-
+# Run the Page Router!
+pg = st.navigation(nav_dict)
 pg.run()
+
+# --- GLOBAL FOOTER INJECTION ---
+if hasattr(db_utils, 'add_footer'):
+    db_utils.add_footer()
