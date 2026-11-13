@@ -39,12 +39,9 @@ class FinalListPDF(FPDF):
         self.cell(0, 8, "CLASS REPRESENTATIVE ELECTION", ln=True, align="C")
         self.ln(10)
 
-    # NEW FOOTER ADDED HERE
     def footer(self):
-        # Position at 15 mm from bottom
         self.set_y(-15)
         self.set_font("Times", "B", 12)
-        # Width 0 spans the whole page, align 'R' puts it on the right
         self.cell(0, 10, "Returning Officer", align="R")
 
     def draw_class_table(self, class_name, candidates, start_x, start_y):
@@ -120,7 +117,14 @@ def get_final_excel_bytes_cached(col_name, yr_str, filtered_cls, cls_data_json):
 
     curr_row = 6
     max_used_row = 6
-    pairs = [filtered_cls[i:i+2] for i in range(0, len(filtered_cls), 2)]
+    
+    # Pre-filter to PREVENT GAPS: Only include classes that still have active Nominated candidates
+    valid_classes = []
+    for cls in filtered_cls:
+        if any(c.get("status") == "Nominated" for c in cls_data[cls].get("candidates", [])):
+            valid_classes.append(cls)
+
+    pairs = [valid_classes[i:i+2] for i in range(0, len(valid_classes), 2)]
 
     for pair in pairs:
         left_class = pair[0]
@@ -172,7 +176,13 @@ def get_final_pdf_bytes_cached(col_name, yr_str, filtered_cls, cls_data_json, lo
     pdf.logo_path_val = logo_p
     pdf.add_page()
     
-    pairs = [filtered_cls[i:i+2] for i in range(0, len(filtered_cls), 2)]
+    # Pre-filter to PREVENT GAPS: Only include classes that still have active Nominated candidates
+    valid_classes = []
+    for cls in filtered_cls:
+        if any(c.get("status") == "Nominated" for c in cls_data[cls].get("candidates", [])):
+            valid_classes.append(cls)
+            
+    pairs = [valid_classes[i:i+2] for i in range(0, len(valid_classes), 2)]
     
     for pair in pairs:
         left_class = pair[0]
@@ -182,17 +192,18 @@ def get_final_pdf_bytes_cached(col_name, yr_str, filtered_cls, cls_data_json, lo
         right_cands = sorted([c for c in cls_data[right_class]["candidates"] if c.get("status") == "Nominated"], key=lambda x: x["name"]) if right_class else []
         
         max_cands = max(len(left_cands), len(right_cands))
-        # Added extra height check to ensure footer and tables don't collide
         estimated_height = 20 + (max_cands * 8)
         
         if pdf.get_y() + estimated_height > 260:
             pdf.add_page()
             
         start_y = pdf.get_y()
-        end_y_left = pdf.draw_class_table(left_class, left_cands, 10, start_y)
-        
+        end_y_left = start_y
         end_y_right = start_y
-        if right_class:
+        
+        if left_cands:
+            end_y_left = pdf.draw_class_table(left_class, left_cands, 10, start_y)
+        if right_class and right_cands:
             end_y_right = pdf.draw_class_table(right_class, right_cands, 110, start_y)
             
         pdf.set_y(max(end_y_left, end_y_right) + 10)
