@@ -1,8 +1,7 @@
 import streamlit as st
 import pandas as pd
-import json
-import os
 import uuid
+import db_utils
 
 st.set_page_config(page_title="Class Rep Nominations", page_icon="📝", layout="wide")
 
@@ -10,38 +9,27 @@ if not st.session_state.get("authenticated", False):
     st.warning("🔒 Please log in from the Home page to access this module.")
     st.stop()
 
+db = db_utils.load_data()
 current_user = st.session_state.username
 
-DATA_FILE = "election_data.json"
+# Tenant Data Loading
+if current_user not in db["users"]: st.stop()
+college_id = db["users"][current_user]["college_id"]
+if college_id not in db["colleges"]: st.stop()
 
-def load_data():
-    if not os.path.exists(DATA_FILE) or os.path.getsize(DATA_FILE) == 0:
-        return {}
-    try:
-        with open(DATA_FILE, "r") as f:
-            return json.load(f)
-    except json.JSONDecodeError:
-        return {}
-
-def save_data(data):
-    with open(DATA_FILE, "w") as f:
-        json.dump(data, f, indent=4)
-
-db = load_data()
-user_profile = db.get("users", {}).get(current_user, {})
-college_name = user_profile.get("college_name", "COLLEGE UNION ELECTION")
-college_data = db.get(current_user, {})
+college_data = db["colleges"][college_id]
+college_name = college_data.get("college_name", "COLLEGE UNION ELECTION")
 
 st.title("📝 Class Representative Nominations")
 st.markdown(f"Register new candidates for **{college_name}**. All entries are saved as **Nominated**.")
 
-if not college_data:
+if "election_years" not in college_data or not college_data["election_years"]:
     st.warning("No election data found. Please go to the Home page to set up the Election Year first.")
     st.stop()
 
-available_years = list(college_data.keys())
+available_years = list(college_data["election_years"].keys())
 selected_year = st.selectbox("Select Election Year", available_years, index=len(available_years)-1)
-year_data = college_data[selected_year]
+year_data = college_data["election_years"][selected_year]
 
 st.markdown("### 1. Select Class")
 c1, c2, c3, c4 = st.columns(4)
@@ -70,7 +58,7 @@ if class_name not in year_data["class_reps"]:
     year_data["class_reps"][class_name] = {"seats": class_seats, "candidates": []}
 else:
     year_data["class_reps"][class_name]["seats"] = class_seats
-    save_data(db)
+    db_utils.save_data(db)
 
 st.markdown("### 2. Add Candidate")
 with st.form("nomination_form", clear_on_submit=True):
@@ -95,8 +83,9 @@ with st.form("nomination_form", clear_on_submit=True):
                 "gender": gender,
                 "status": "Nominated"
             }
+            
             year_data["class_reps"][class_name]["candidates"].append(new_candidate)
-            save_data(db)
+            db_utils.save_data(db)
             st.success(f"Successfully nominated {cand_name}!")
 
 st.markdown("### 3. Current Nominations")
@@ -119,7 +108,7 @@ if current_candidates:
             year_data["class_reps"][class_name]["candidates"] = [
                 c for c in current_candidates if c["id"] != cand_to_delete
             ]
-            save_data(db)
+            db_utils.save_data(db)
             st.rerun()
 else:
     st.info(f"No candidates nominated yet for {class_name}.")
