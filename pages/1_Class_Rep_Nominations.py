@@ -135,7 +135,7 @@ with st.form("nomination_form", clear_on_submit=True):
             
             year_data["class_reps"][class_name]["candidates"].append(new_candidate)
             db_utils.save_data(db)
-            st.success(f"Successfully nominated {cand_name}!")
+            st.success(f"Success!")
 
 # --- 3. FILTERED DISPLAY & EXPORT ---
 st.markdown(f"### 3. Current Nominations ({course_year} Year {degree_level})")
