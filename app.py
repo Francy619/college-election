@@ -8,12 +8,15 @@ DATA_FILE = "election_data.json"
 
 def load_data():
     if not os.path.exists(DATA_FILE) or os.path.getsize(DATA_FILE) == 0:
-        return {}
+        return {"users": {"admin": {"password": "adminpassword", "recovery_hint": "admin"}}}
     try:
         with open(DATA_FILE, "r") as f:
-            return json.load(f)
+            data = json.load(f)
+            if "users" not in data:
+                data["users"] = {"admin": {"password": "adminpassword", "recovery_hint": "admin"}}
+            return data
     except json.JSONDecodeError:
-        return {}
+        return {"users": {"admin": {"password": "adminpassword", "recovery_hint": "admin"}}}
 
 def save_data(data):
     with open(DATA_FILE, "w") as f:
@@ -23,6 +26,88 @@ db = load_data()
 
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="College Election Manager", layout="wide", page_icon="🗳️")
+
+# --- AUTHENTICATION SESSION STATE ---
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+if "username" not in st.session_state:
+    st.session_state.username = ""
+
+# --- LOGIN / AUTHENTICATION SCREEN ---
+if not st.session_state.authenticated:
+    st.markdown("<h2 style='text-align: center; color: #2E4053;'>ST. DOMINIC'S COLLEGE, KANJIRAPALLY</h2>", unsafe_allow_html=True)
+    st.markdown("<h4 style='text-align: center; color: #5D6D7E;'>College Union Election Management Portal</h4><br>", unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns([1, 1.5, 1])
+    
+    with col2:
+        auth_tab1, auth_tab2, auth_tab3 = st.tabs(["🔑 Login", "📝 Create Account", "🔄 Forgot Password"])
+        
+        # TAB 1: LOGIN
+        with auth_tab1:
+            st.subheader("Returning Officer Login")
+            with st.form("login_form"):
+                u_input = st.text_input("Username")
+                p_input = st.text_input("Password", type="password")
+                login_btn = st.form_submit_button("Login", type="primary")
+                
+                if login_btn:
+                    users_db = db.get("users", {})
+                    if u_input in users_db and users_db[u_input]["password"] == p_input:
+                        st.session_state.authenticated = True
+                        st.session_state.username = u_input
+                        st.success("Login successful!")
+                        st.rerun()
+                    else:
+                        st.error("Invalid username or password.")
+                        
+        # TAB 2: CREATE ACCOUNT
+        with auth_tab2:
+            st.subheader("Register New Account")
+            with st.form("signup_form"):
+                new_user = st.text_input("Choose Username")
+                new_pass = st.text_input("Choose Password", type="password")
+                hint = st.text_input("Password Recovery Hint (e.g., Your favorite pet name)")
+                signup_btn = st.form_submit_button("Register Account")
+                
+                if signup_btn:
+                    if not new_user or not new_pass or not hint:
+                        st.warning("Please fill in all fields.")
+                    elif new_user in db["users"]:
+                        st.error("Username already exists. Choose another.")
+                    else:
+                        db["users"][new_user] = {"password": new_pass, "recovery_hint": hint}
+                        save_data(db)
+                        st.success("Account created successfully! You can now log in using the Login tab.")
+                        
+        # TAB 3: FORGOT PASSWORD
+        with auth_tab3:
+            st.subheader("Password Recovery")
+            with st.form("forgot_form"):
+                f_user = st.text_input("Enter your Username")
+                f_hint = st.text_input("Enter your Recovery Hint Answer")
+                recover_btn = st.form_submit_button("Recover Password")
+                
+                if recover_btn:
+                    users_db = db.get("users", {})
+                    if f_user in users_db:
+                        if users_db[f_user]["recovery_hint"].strip().lower() == f_hint.strip().lower():
+                            st.info(f"Your password is: **{users_db[f_user]['password']}**")
+                        else:
+                            st.error("Incorrect recovery hint answer.")
+                    else:
+                        st.error("Username not found.")
+                        
+    st.stop() # Stop execution here so unauthorized users cannot see the rest of the app
+
+# --- LOGOUT & USER INFO IN SIDEBAR ---
+st.sidebar.write(f"👤 Logged in as: **{st.session_state.username}**")
+if st.sidebar.button("🚪 Logout"):
+    st.session_state.authenticated = False
+    st.session_state.username = ""
+    st.rerun()
+
+st.sidebar.markdown("---")
 
 # --- INITIALIZE DEFAULTS IN SESSION STATE ---
 if "ug_text" not in st.session_state:
@@ -67,9 +152,8 @@ db[election_year]["programs"]["UG"] = [p.strip() for p in ug_input.split('\n') i
 db[election_year]["programs"]["PG"] = [p.strip() for p in pg_input.split('\n') if p.strip()]
 save_data(db)
 
-# --- DEFINE PAGE VIEWS FOR st.navigation() ---
+# --- DEFINE HOME PAGE VIEW ---
 def home_page():
-    # --- CUSTOM HEADER ---
     col_logo, col_title = st.columns([1, 6])
     with col_logo:
         if os.path.exists("logo.png"):
@@ -82,9 +166,8 @@ def home_page():
 
     st.markdown("---")
 
-    # --- MAIN DASHBOARD HOME PAGE ---
     st.subheader("📊 Election Dashboard")
-    st.write(f"Welcome to the College Election Management Portal. You are currently managing records for **Academic Year {election_year}**.")
+    st.write(f"Welcome back, **{st.session_state.username}**! You are managing records for **Academic Year {election_year}**.")
 
     year_data = db[election_year]
     class_reps_data = year_data.get("class_reps", {})
@@ -100,17 +183,15 @@ def home_page():
     m3.metric("Withdrawn Candidates", total_withdrawn)
     m4.metric("Active Contestants", total_active)
 
-    # --- CUSTOM FOOTER ---
     st.markdown("<br><br><hr>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: #808B96; font-size: 14px;'>Developed by Francis Thomas</p>", unsafe_allow_html=True)
 
-# Define the navigation structure using st.navigation
+# --- NAVIGATION STRUCTURE ---
 pg = st.navigation({
     "Overview": [
         st.Page(home_page, title="Dashboard Home", icon="📊")
     ],
     "Election Workflow": [
-        # Note: You can point these to your separate page script files if you keep them in a folder like 'views/'
         st.Page("pages/1_Class_Rep_Nominations.py", title="1. Class Rep Nominations", icon="📝"),
         st.Page("pages/2_Withdrawals_&_Final.py", title="2. Scrutiny & Withdrawals", icon="🛑"),
         st.Page("pages/3_Ballot_Generation.py", title="3. Ballot Generation", icon="🖨️"),
@@ -120,5 +201,4 @@ pg = st.navigation({
     ]
 })
 
-# Run the selected page
 pg.run()
