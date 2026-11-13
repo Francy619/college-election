@@ -36,7 +36,6 @@ class ResultsPDF(FPDF):
         self.cell(0, 8, getattr(self, 'college_name_val', ''), ln=True, align="C")
         self.cell(0, 8, f"College Union Election {getattr(self, 'year_str', '')}", ln=True, align="C")
         self.cell(0, 8, "LIST OF CLASS REPRESENTATIVES", ln=True, align="C")
-        self.cell(0, 8, "CLASS REPRESENTATIVE ELECTION", ln=True, align="C")
         self.ln(10)
 
     def footer(self):
@@ -115,8 +114,8 @@ def get_results_excel_bytes_cached(col_name, yr_str, filtered_cls, cls_data_json
     ws.merge_cells('A2:G2'); ws['A2'] = f"College Union Election {yr_str}"; ws['A2'].font = font_heading; ws['A2'].alignment = align_center
     ws.merge_cells('A3:G3'); ws['A3'] = "LIST OF CLASS REPRESENTATIVES"; ws['A3'].font = font_heading; ws['A3'].alignment = align_center
 
-    curr_row = 6
-    max_used_row = 6
+    curr_row = 5
+    max_used_row = 5
     pairs = [filtered_cls[i:i+2] for i in range(0, len(filtered_cls), 2)]
 
     for pair in pairs:
