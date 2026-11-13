@@ -78,7 +78,7 @@ class BallotPDF(FPDF):
         # LEFT SIDE: Counter Foil
         # ==========================================
         # Shifted X to 15 for a wider left margin
-        self.set_xy(15, 12 + y_offset)
+        self.set_xy(25, 12 + y_offset)
         self.set_font("Times", "", 8) 
         line_ht = 8 
         
