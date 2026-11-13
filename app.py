@@ -4,6 +4,9 @@ import json
 import os
 import random
 import string
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 import db_utils
 
 # --- SUPER ADMIN CREDENTIALS ---
@@ -37,9 +40,44 @@ if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 if "username" not in st.session_state:
     st.session_state.username = ""
+if "otp_sent_to" not in st.session_state:
+    st.session_state.otp_sent_to = None
 
 def generate_id():
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+
+def send_reset_email(recipient_email, otp_code, username):
+    """Sends an OTP to the user's email using Streamlit Secrets."""
+    try:
+        sender = st.secrets["email_sender"]
+        password = st.secrets["email_password"]
+        
+        msg = MIMEMultipart()
+        msg['From'] = sender
+        msg['To'] = recipient_email
+        msg['Subject'] = "College Election Portal - Password Reset"
+        
+        body = f"""
+        Hello {username},
+        
+        You requested a password reset for your College Union Election Portal admin account.
+        
+        Your 6-digit recovery code is: {otp_code}
+        
+        Enter this code in the app to set a new password. If you did not request this, please ignore this email.
+        """
+        msg.attach(MIMEText(body, 'plain'))
+        
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(sender, password)
+        text = msg.as_string()
+        server.sendmail(sender, recipient_email, text)
+        server.quit()
+        return True
+    except Exception as e:
+        st.error(f"Failed to send email. Please check your Streamlit Secrets. Error: {e}")
+        return False
 
 # ==========================================
 # 🔐 LOGIN & REGISTRATION PORTAL 
@@ -51,7 +89,7 @@ if not st.session_state.authenticated:
     col1, col2, col3 = st.columns([1, 1.5, 1])
     
     with col2:
-        auth_tab1, auth_tab2 = st.tabs(["🔑 Login", "🏛️ Register New College"])
+        auth_tab1, auth_tab2, auth_tab3 = st.tabs(["🔑 Login", "🏛️ Register New College", "🔄 Forgot Password"])
         
         # --- TAB 1: LOGIN ---
         with auth_tab1:
@@ -78,18 +116,18 @@ if not st.session_state.authenticated:
             st.subheader("Register Institution")
             st.write("Create the master account for your college.")
             with st.form("signup_form"):
-                c_name = st.text_input("Official College Name", value="ST. DOMINIC'S COLLEGE, KANJIRAPALLY")
+                c_name = st.text_input("Official College Name", value="ST. THOMAS COLLEGE")
                 e_mode = st.radio("Election Mode", ["Parliamentary (Indirect - Class Reps First)", "Presidential (Direct - Main Posts Only)"])
                 st.markdown("---")
                 new_user = st.text_input("Choose Admin Username")
+                admin_email = st.text_input("Admin Email Address (For Password Recovery)")
                 new_pass = st.text_input("Choose Password", type="password")
                 
                 if st.form_submit_button("Create Institution Account"):
-                    # Failsafe check
                     if "colleges" not in db: db["colleges"] = {}
                     if "users" not in db: db["users"] = {}
                         
-                    if not new_user or not new_pass or not c_name:
+                    if not new_user or not new_pass or not c_name or not admin_email:
                         st.warning("Please fill in all fields.")
                     elif new_user == SUPERADMIN_USER or new_user in db["users"]:
                         st.error("Username already taken. Please choose another.")
@@ -106,11 +144,61 @@ if not st.session_state.authenticated:
                         
                         db["users"][new_user] = {
                             "password": new_pass,
+                            "email": admin_email.lower(),
                             "college_id": college_id,
-                            "role": "Admin"
+                            "role": "Admin",
+                            "reset_otp": ""
                         }
                         db_utils.save_data(db)
                         st.success("College registered successfully! Switch to the Login tab.")
+
+        # --- TAB 3: FORGOT PASSWORD ---
+        with auth_tab3:
+            st.subheader("Reset Password")
+            
+            if not st.session_state.otp_sent_to:
+                with st.form("request_reset_form"):
+                    reset_user = st.text_input("Enter your Admin Username")
+                    if st.form_submit_button("Send Recovery Code"):
+                        if reset_user in db["users"] and "email" in db["users"][reset_user]:
+                            # Generate random 6-digit OTP
+                            otp = str(random.randint(100000, 999999))
+                            db["users"][reset_user]["reset_otp"] = otp
+                            db_utils.save_data(db)
+                            
+                            # Send Email
+                            user_email = db["users"][reset_user]["email"]
+                            if send_reset_email(user_email, otp, reset_user):
+                                st.session_state.otp_sent_to = reset_user
+                                st.success(f"OTP sent to {user_email[:3]}***@***")
+                                st.rerun()
+                        else:
+                            st.error("Username not found or no email associated.")
+            
+            else:
+                # OTP was sent, now verify and set new password
+                with st.form("verify_reset_form"):
+                    st.info(f"An OTP was sent to the email associated with **{st.session_state.otp_sent_to}**.")
+                    entered_otp = st.text_input("Enter 6-digit OTP")
+                    new_password = st.text_input("Enter New Password", type="password")
+                    
+                    if st.form_submit_button("Reset Password"):
+                        target_user = st.session_state.otp_sent_to
+                        saved_otp = db["users"][target_user].get("reset_otp", "")
+                        
+                        if entered_otp == saved_otp and saved_otp != "":
+                            # Success! Change password and clear OTP
+                            db["users"][target_user]["password"] = new_password
+                            db["users"][target_user]["reset_otp"] = "" 
+                            db_utils.save_data(db)
+                            st.session_state.otp_sent_to = None # Reset state
+                            st.success("Password successfully changed! You can now log in.")
+                        else:
+                            st.error("Invalid OTP code.")
+                            
+                if st.button("Cancel / Restart"):
+                    st.session_state.otp_sent_to = None
+                    st.rerun()
                         
     st.stop()
 
@@ -160,7 +248,7 @@ if current_user == SUPERADMIN_USER:
                     if c_users:
                         st.markdown("**Associated User Accounts & Passwords:**")
                         df_users = pd.DataFrame([
-                            {"Username": u, "Password": d["password"], "Role": d["role"]} 
+                            {"Username": u, "Password": d["password"], "Role": d["role"], "Email": d.get("email", "N/A")} 
                             for u, d in c_users.items()
                         ])
                         st.dataframe(df_users, hide_index=True, use_container_width=True)
@@ -169,7 +257,6 @@ if current_user == SUPERADMIN_USER:
                         
                     st.markdown("<br>", unsafe_allow_html=True)
                     if st.button(f"🗑️ Permanently Delete {cdata['college_name']}", key=f"del_{cid}", type="primary"):
-                        # Use list() to prevent dictionary size change errors during iteration
                         for u in list(c_users.keys()):
                             del db["users"][u]
                         del db["colleges"][cid]
@@ -185,7 +272,6 @@ if current_user == SUPERADMIN_USER:
 # ==========================================
 # 🏫 NORMAL COLLEGE USER VIEW 
 # ==========================================
-# Safety check if user gets deleted while logged in
 if current_user not in db["users"]:
     st.session_state.authenticated = False
     st.rerun()
@@ -193,7 +279,6 @@ if current_user not in db["users"]:
 user_profile = db["users"][current_user]
 college_id = user_profile["college_id"]
 
-# Safety check if college gets deleted
 if college_id not in db["colleges"]:
     st.session_state.authenticated = False
     st.rerun()
@@ -262,7 +347,6 @@ st.sidebar.header("Global Election Settings")
 election_year = st.sidebar.text_input("Election Year", value="2026-27")
 poll_date = st.sidebar.text_input("Date of Poll", value="")
 
-# Ensure year structure exists inside this specific college's data
 if "election_years" not in college_data:
     college_data["election_years"] = {}
 
