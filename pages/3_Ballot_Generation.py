@@ -197,7 +197,7 @@ class BallotPDF(FPDF):
         # ==========================================
         # ABSOLUTE BOTTOM POSITIONING (Date of Poll)
         # ==========================================
-        # Positioned ~10mm above the bottom cut-line
+        # Positioned ~20mm above the bottom cut-line
         self.set_font("Times", "", 9)
         
         # 1. Bottom-Left of Counterfoil
