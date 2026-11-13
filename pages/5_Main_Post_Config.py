@@ -27,10 +27,21 @@ available_years = list(college_data["election_years"].keys())
 selected_year = st.selectbox("Select Election Year", available_years, index=len(available_years)-1)
 year_data = college_data["election_years"][selected_year]
 
+# Initialize with your comprehensive list of default posts
 if "main_posts_config" not in year_data:
     year_data["main_posts_config"] = [
         {"post_name": "The Chairperson", "seats": 1},
-        {"post_name": "General Secretary", "seats": 1}
+        {"post_name": "The Vice Chairperson", "seats": 1},
+        {"post_name": "General Secretary", "seats": 1},
+        {"post_name": "University Union Councillor (UUC)", "seats": 2}, 
+        {"post_name": "The Arts Club Secretary", "seats": 1},
+        {"post_name": "The Magazine Editor", "seats": 1},
+        {"post_name": "Lady Representative", "seats": 2},
+        {"post_name": "I Year Representative", "seats": 1},
+        {"post_name": "II Year Representative", "seats": 1},
+        {"post_name": "III Year Representative", "seats": 1},
+        {"post_name": "I PG Representative", "seats": 1},
+        {"post_name": "II PG Representative", "seats": 1}
     ]
     db_utils.save_data(db)
 
@@ -56,17 +67,35 @@ with st.form("add_post_form", clear_on_submit=True):
                 st.success(f"Added '{new_post_name}'!")
                 st.rerun()
 
-st.markdown("### Configured Posts")
+st.markdown("### Configured Posts (Order of Ballot)")
+st.write("Use the ⬆️ and ⬇️ arrows to reorder the posts. This order will dictate how they appear on the final ballots and result sheets.")
+
 if posts_config:
     for idx, post in enumerate(posts_config):
-        c1, c2, c3 = st.columns([4, 2, 2])
+        # Updated columns to fit the UP and DOWN buttons
+        c1, c2, c3, c4, c5 = st.columns([4, 2, 1, 1, 1])
+        
         c1.text(f"📌 {post['post_name']}")
+        
         updated_seats = c2.number_input("Seats", min_value=1, value=post['seats'], key=f"seats_val_{idx}", label_visibility="collapsed")
         if updated_seats != post['seats']:
             posts_config[idx]['seats'] = updated_seats
             db_utils.save_data(db)
             
-        if c3.button("🗑️ Delete", key=f"del_post_{idx}"):
+        # Move UP Button
+        if c3.button("⬆️", key=f"up_{idx}", disabled=(idx == 0), help="Move up"):
+            posts_config.insert(idx - 1, posts_config.pop(idx))
+            db_utils.save_data(db)
+            st.rerun()
+            
+        # Move DOWN Button
+        if c4.button("⬇️", key=f"down_{idx}", disabled=(idx == len(posts_config) - 1), help="Move down"):
+            posts_config.insert(idx + 1, posts_config.pop(idx))
+            db_utils.save_data(db)
+            st.rerun()
+            
+        # DELETE Button
+        if c5.button("🗑️", key=f"del_post_{idx}", help="Delete Post"):
             post_to_remove = post['post_name']
             posts_config.pop(idx)
             if "main_post_candidates" in year_data and post_to_remove in year_data["main_post_candidates"]:
