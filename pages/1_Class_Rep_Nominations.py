@@ -87,7 +87,7 @@ with st.form("nomination_form", clear_on_submit=True):
             
             year_data["class_reps"][class_name]["candidates"].append(new_candidate)
             db_utils.save_data(db)
-            st.success(f"Successfully nominated {cand_name}!")
+            st.success(f"Success")
 
 st.markdown("### 3. Current Nominations (All Classes)")
 class_reps_data = year_data.get("class_reps", {})
