@@ -39,7 +39,6 @@ class ResultsPDF(FPDF):
         self.ln(10)
 
     def footer(self):
-        # Position at 15 mm from bottom
         self.set_y(-15)
         self.set_font("Times", "B", 12)
         self.cell(0, 10, "Returning Officer", align="R")
@@ -116,13 +115,19 @@ def get_results_excel_bytes_cached(col_name, yr_str, filtered_cls, cls_data_json
 
     curr_row = 5
     max_used_row = 5
-    pairs = [filtered_cls[i:i+2] for i in range(0, len(filtered_cls), 2)]
+    
+    # Pre-filter: ONLY include classes that actually have elected candidates to prevent gaps
+    valid_classes = []
+    for cls in filtered_cls:
+        if any(c.get("status") == "Elected" for c in cls_data[cls].get("candidates", [])):
+            valid_classes.append(cls)
+
+    pairs = [valid_classes[i:i+2] for i in range(0, len(valid_classes), 2)]
 
     for pair in pairs:
         left_class = pair[0]
         right_class = pair[1] if len(pair) > 1 else None
 
-        # Filter ONLY Elected candidates
         left_cands = sorted([c for c in cls_data[left_class]["candidates"] if c.get("status") == "Elected"], key=lambda x: x["name"])
         right_cands = sorted([c for c in cls_data[right_class]["candidates"] if c.get("status") == "Elected"], key=lambda x: x["name"]) if right_class else []
 
@@ -169,19 +174,20 @@ def get_results_pdf_bytes_cached(col_name, yr_str, filtered_cls, cls_data_json, 
     pdf.logo_path_val = logo_p
     pdf.add_page()
     
-    pairs = [filtered_cls[i:i+2] for i in range(0, len(filtered_cls), 2)]
+    # Pre-filter: ONLY include classes that actually have elected candidates to prevent gaps
+    valid_classes = []
+    for cls in filtered_cls:
+        if any(c.get("status") == "Elected" for c in cls_data[cls].get("candidates", [])):
+            valid_classes.append(cls)
+            
+    pairs = [valid_classes[i:i+2] for i in range(0, len(valid_classes), 2)]
     
     for pair in pairs:
         left_class = pair[0]
         right_class = pair[1] if len(pair) > 1 else None
         
-        # Filter ONLY Elected candidates
         left_cands = sorted([c for c in cls_data[left_class]["candidates"] if c.get("status") == "Elected"], key=lambda x: x["name"])
         right_cands = sorted([c for c in cls_data[right_class]["candidates"] if c.get("status") == "Elected"], key=lambda x: x["name"]) if right_class else []
-        
-        # If neither class in the pair has elected candidates, skip drawing them
-        if not left_cands and not right_cands:
-            continue
             
         max_cands = max(len(left_cands), len(right_cands))
         estimated_height = 20 + (max_cands * 8)
@@ -274,23 +280,36 @@ st.markdown(f"### 2. Enter Results for: **{selected_class}**")
 if not active_candidates:
     st.info("No active candidates found for this class.")
 else:
+    # Determine auto-election defaults
+    males_in_class = [c for c in active_candidates if c["gender"] == "Male"]
+    females_in_class = [c for c in active_candidates if c["gender"] == "Female"]
+    
     flat_candidates = []
     for cand in active_candidates:
-        # Default to Lost if they are currently just "Nominated"
         current = cand.get("status", "Nominated")
-        display_status = "Lost" if current == "Nominated" else current
         
+        if current == "Nominated":
+            # Auto-elect if they are the only active candidate for their gender
+            if cand["gender"] == "Male" and len(males_in_class) == 1:
+                display_status = "Elected"
+            elif cand["gender"] == "Female" and len(females_in_class) == 1:
+                display_status = "Elected"
+            else:
+                display_status = "Lost"
+        else:
+            display_status = current
+            
         flat_candidates.append({
             "ID": cand["id"],
             "Roll No": cand["roll_no"],
             "Name": cand["name"],
             "Gender": cand["gender"],
-            "Status": display_status
+            "Status ✏️": display_status
         })
 
     df = pd.DataFrame(flat_candidates)
     
-    st.write("Mark the winning candidate(s) as **Elected**. All others will be saved as **Lost**.")
+    st.write("Mark the winning candidate(s) as **Elected**. Unopposed candidates are automatically set to **Elected**. Double-click the highlighted Status column to change.")
     
     edited_df = st.data_editor(
         df,
@@ -299,7 +318,7 @@ else:
             "Roll No": st.column_config.NumberColumn(disabled=True),
             "Name": st.column_config.TextColumn(disabled=True),
             "Gender": st.column_config.TextColumn(disabled=True),
-            "Status": st.column_config.SelectboxColumn("Status", options=["Elected", "Lost"], required=True)
+            "Status ✏️": st.column_config.SelectboxColumn("Status ✏️", options=["Elected", "Lost"], required=True, help="Double-click to change status")
         },
         use_container_width=True,
         hide_index=True,
@@ -309,7 +328,7 @@ else:
     if st.button("💾 Save Results", type="primary"):
         for index, row in edited_df.iterrows():
             cand_id = row["ID"]
-            new_status = row["Status"]
+            new_status = row["Status ✏️"] # Map back from the highlighted column
             
             for c in class_reps_data[selected_class]["candidates"]:
                 if c["id"] == cand_id:
