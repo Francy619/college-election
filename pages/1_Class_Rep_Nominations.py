@@ -38,18 +38,18 @@ class NominationPDF(FPDF):
         
         self.cell(0, 8, f"College Union Election {self.year_str}", ln=True, align="C")
         
-        self.cell(0, 8, "LIST OF VALID NOMINATIONS OF CLASS REPRESENTATIVE ELECTION", ln=True, align="C")
+        # Split heading to prevent overlap with logo
+        self.cell(0, 8, "LIST OF VALID NOMINATIONS OF", ln=True, align="C")
+        self.cell(0, 8, "CLASS REPRESENTATIVE ELECTION", ln=True, align="C")
         
-        self.cell(0, 8, f"Category: {self.category_str}", ln=True, align="C")
-        
-        # Added extra gap after the main headings
+        # Extra gap after the main headings
         self.ln(10)
 
     def draw_class_table(self, class_name, candidates, start_x, start_y):
-        # Class Name Heading
+        # Class Name Heading - Centered relative to the table width (90)
         self.set_xy(start_x, start_y)
         self.set_font("Times", "B", 14)
-        self.cell(90, 8, class_name, ln=False, align="L")
+        self.cell(90, 8, class_name, ln=False, align="C")
         
         # Table Header (with wrapped Electoral Roll No)
         self.set_xy(start_x, start_y + 8)
@@ -84,12 +84,12 @@ class NominationPDF(FPDF):
         return curr_y
 
 # --- EXCEL GENERATOR FUNCTION ---
-def generate_excel_report(col_name, yr_str, cat_str, filtered_cls, cls_data):
+def generate_excel_report(col_name, yr_str, filtered_cls, cls_data):
     wb = Workbook()
     ws = wb.active
     ws.title = "Nominations"
 
-    # Styling
+    # Styling matches PDF
     font_heading = Font(name="Times New Roman", size=14, bold=True)
     font_header = Font(name="Times New Roman", size=12, bold=True)
     font_data = Font(name="Times New Roman", size=12)
@@ -114,10 +114,11 @@ def generate_excel_report(col_name, yr_str, cat_str, filtered_cls, cls_data):
     # Main Headings (Merged across both visual columns)
     ws.merge_cells('A1:G1'); ws['A1'] = col_name; ws['A1'].font = font_heading; ws['A1'].alignment = align_center
     ws.merge_cells('A2:G2'); ws['A2'] = f"College Union Election {yr_str}"; ws['A2'].font = font_heading; ws['A2'].alignment = align_center
-    ws.merge_cells('A3:G3'); ws['A3'] = "LIST OF VALID NOMINATIONS OF CLASS REPRESENTATIVE ELECTION"; ws['A3'].font = font_heading; ws['A3'].alignment = align_center
-    ws.merge_cells('A4:G4'); ws['A4'] = f"Category: {cat_str}"; ws['A4'].font = font_heading; ws['A4'].alignment = align_center
+    ws.merge_cells('A3:G3'); ws['A3'] = "LIST OF VALID NOMINATIONS OF"; ws['A3'].font = font_heading; ws['A3'].alignment = align_center
+    ws.merge_cells('A4:G4'); ws['A4'] = "CLASS REPRESENTATIVE ELECTION"; ws['A4'].font = font_heading; ws['A4'].alignment = align_center
 
     curr_row = 6
+    max_used_row = 6
     pairs = [filtered_cls[i:i+2] for i in range(0, len(filtered_cls), 2)]
 
     for pair in pairs:
@@ -128,7 +129,11 @@ def generate_excel_report(col_name, yr_str, cat_str, filtered_cls, cls_data):
         right_cands = sorted([c for c in cls_data[right_class]["candidates"] if c.get("status") == "Nominated"], key=lambda x: x["name"]) if right_class else []
 
         # Left Table
-        ws.cell(row=curr_row, column=1, value=left_class).font = font_heading
+        ws.merge_cells(start_row=curr_row, start_column=1, end_row=curr_row, end_column=3)
+        c_left = ws.cell(row=curr_row, column=1, value=left_class)
+        c_left.font = font_heading
+        c_left.alignment = align_center
+        
         ws.cell(row=curr_row+1, column=1, value="Electoral\nRoll No.").font = font_header; ws.cell(row=curr_row+1, column=1).alignment = align_center; ws.cell(row=curr_row+1, column=1).border = border_thin
         ws.cell(row=curr_row+1, column=2, value="Name").font = font_header; ws.cell(row=curr_row+1, column=2).alignment = align_center; ws.cell(row=curr_row+1, column=2).border = border_thin
         ws.cell(row=curr_row+1, column=3, value="Gender").font = font_header; ws.cell(row=curr_row+1, column=3).alignment = align_center; ws.cell(row=curr_row+1, column=3).border = border_thin
@@ -143,7 +148,11 @@ def generate_excel_report(col_name, yr_str, cat_str, filtered_cls, cls_data):
         # Right Table
         r_right = curr_row + 2
         if right_class:
-            ws.cell(row=curr_row, column=5, value=right_class).font = font_heading
+            ws.merge_cells(start_row=curr_row, start_column=5, end_row=curr_row, end_column=7)
+            c_right = ws.cell(row=curr_row, column=5, value=right_class)
+            c_right.font = font_heading
+            c_right.alignment = align_center
+            
             ws.cell(row=curr_row+1, column=5, value="Electoral\nRoll No.").font = font_header; ws.cell(row=curr_row+1, column=5).alignment = align_center; ws.cell(row=curr_row+1, column=5).border = border_thin
             ws.cell(row=curr_row+1, column=6, value="Name").font = font_header; ws.cell(row=curr_row+1, column=6).alignment = align_center; ws.cell(row=curr_row+1, column=6).border = border_thin
             ws.cell(row=curr_row+1, column=7, value="Gender").font = font_header; ws.cell(row=curr_row+1, column=7).alignment = align_center; ws.cell(row=curr_row+1, column=7).border = border_thin
@@ -155,6 +164,11 @@ def generate_excel_report(col_name, yr_str, cat_str, filtered_cls, cls_data):
                 r_right += 1
 
         curr_row = max(r_left, r_right) + 2
+        max_used_row = max(max_used_row, curr_row)
+
+    # Set all used row heights to 20
+    for r in range(1, max_used_row):
+        ws.row_dimensions[r].height = 20
 
     buffer = io.BytesIO()
     wb.save(buffer)
@@ -256,8 +270,7 @@ else:
     with col_export1:
         # Generate 2-Column Styled Excel
         excel_bytes = generate_excel_report(
-            college_name, selected_year, f"{course_year} Year {degree_level}", 
-            filtered_classes, class_reps_data
+            college_name, selected_year, filtered_classes, class_reps_data
         )
         st.download_button(
             label="📥 Download Excel (.xlsx)", 
@@ -272,7 +285,6 @@ else:
         if st.button("🖨️ Generate 2-Column PDF Report", use_container_width=True, type="primary"):
             pdf = NominationPDF()
             pdf.year_str = selected_year
-            pdf.category_str = f"{course_year} Year {degree_level}"
             pdf.add_page()
             
             pairs = [filtered_classes[i:i+2] for i in range(0, len(filtered_classes), 2)]
