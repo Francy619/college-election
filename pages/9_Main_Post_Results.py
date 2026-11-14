@@ -36,7 +36,6 @@ class MainResultsPDF(FPDF):
         self.cell(0, 8, getattr(self, 'college_name_val', ''), ln=True, align="C")
         self.cell(0, 8, f"College Union Election {getattr(self, 'year_str', '')}", ln=True, align="C")
         self.cell(0, 8, "OFFICIAL DECLARATION OF RESULTS", ln=True, align="C")
-        self.cell(0, 8, "MAIN POST ELECTION", ln=True, align="C")
         self.ln(10)
 
     def footer(self):
@@ -45,8 +44,15 @@ class MainResultsPDF(FPDF):
         self.cell(0, 10, "Returning Officer", align="R")
 
     def draw_post_table(self, post_name, candidates):
-        self.set_font("Times", "B", 14)
-        self.cell(0, 10, f"Post: {post_name}", ln=True, align="L")
+        # Auto-shrink logic for extremely long post names to keep them perfectly centered
+        font_sz_title = 14
+        self.set_font("Times", "B", font_sz_title)
+        while self.get_string_width(post_name) > 180 and font_sz_title > 8:
+            font_sz_title -= 0.5
+            self.set_font("Times", "B", font_sz_title)
+            
+        # Post name centered, no "Post: " prefix
+        self.cell(0, 10, post_name, ln=True, align="C")
         
         # Table Headers (Full Width = 190mm)
         self.set_font("Times", "B", 12)
@@ -111,16 +117,16 @@ def get_main_results_excel_bytes(col_name, yr_str, active_posts, post_data_json)
     ws.merge_cells('A1:E1'); ws['A1'] = col_name; ws['A1'].font = font_heading; ws['A1'].alignment = align_center
     ws.merge_cells('A2:E2'); ws['A2'] = f"College Union Election {yr_str}"; ws['A2'].font = font_heading; ws['A2'].alignment = align_center
     ws.merge_cells('A3:E3'); ws['A3'] = "OFFICIAL DECLARATION OF RESULTS"; ws['A3'].font = font_heading; ws['A3'].alignment = align_center
-    ws.merge_cells('A4:E4'); ws['A4'] = "MAIN POST ELECTION"; ws['A4'].font = font_heading; ws['A4'].alignment = align_center
 
-    curr_row = 6
+    curr_row = 5
     for post in active_posts:
         active_cands = sorted([c for c in post_data[post]["candidates"] if c.get("status") == "Elected"], key=lambda x: x["name"])
         if not active_cands:
             continue
             
         ws.merge_cells(start_row=curr_row, start_column=1, end_row=curr_row, end_column=5)
-        c_post = ws.cell(row=curr_row, column=1, value=f"Post: {post}"); c_post.font = font_heading; c_post.alignment = align_left
+        # Post name centered, no "Post: " prefix
+        c_post = ws.cell(row=curr_row, column=1, value=post); c_post.font = font_heading; c_post.alignment = align_center
         
         ws.cell(row=curr_row+1, column=1, value="SL No").font = font_header; ws.cell(row=curr_row+1, column=1).alignment = align_center; ws.cell(row=curr_row+1, column=1).border = border_thin
         ws.cell(row=curr_row+1, column=2, value="Roll No").font = font_header; ws.cell(row=curr_row+1, column=2).alignment = align_center; ws.cell(row=curr_row+1, column=2).border = border_thin
@@ -137,7 +143,7 @@ def get_main_results_excel_bytes(col_name, yr_str, active_posts, post_data_json)
             ws.cell(row=r, column=5, value="M" if c["gender"]=="Male" else "F").font = font_data; ws.cell(row=r, column=5).alignment = align_center; ws.cell(row=r, column=5).border = border_thin
             r += 1
             
-        curr_row = r + 1
+        curr_row = r + 2
 
     for row_idx in range(1, curr_row): ws.row_dimensions[row_idx].height = 20
     buffer = io.BytesIO()
@@ -296,3 +302,7 @@ else:
             use_container_width=True,
             type="primary"
         )
+
+# --- INJECT FOOTER ---
+if hasattr(db_utils, 'add_footer'):
+    db_utils.add_footer()
