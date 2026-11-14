@@ -223,7 +223,11 @@ if not st.session_state.authenticated:
                 if st.button("Cancel / Restart"):
                     st.session_state.otp_sent_to = None
                     st.rerun()
-                        
+                    
+    # INJECT FOOTER FOR LOGIN/REGISTER SCREENS BEFORE HALTING EXECUTION
+    if hasattr(db_utils, 'add_footer'):
+        db_utils.add_footer()
+        
     st.stop()
 
 current_user = st.session_state.username
@@ -537,7 +541,7 @@ if college_data["election_mode"] == "Parliamentary":
 p_prefix = 5 if college_data["election_mode"] == "Parliamentary" else 1
 
 nav_dict["Main Union Posts"] = [
-    st.Page("pages/5_Main_Post_Config.py", title=f"{p_prefix}. Configuration", icon="⚙️"),
+    st.Page("pages/5_Main_Post_Configuration.py", title=f"{p_prefix}. Configuration", icon="⚙️"),
     st.Page("pages/6_Main_Post_Nominations.py", title=f"{p_prefix+1}. Nominations", icon="📝"),
     st.Page("pages/7_Main_Post_Withdrawals.py", title=f"{p_prefix+2}. Withdrawals & Final", icon="🛑"),
     st.Page("pages/8_Main_Post_Ballots.py", title=f"{p_prefix+3}. Ballots", icon="🖨️"),
