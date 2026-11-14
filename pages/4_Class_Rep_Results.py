@@ -226,24 +226,14 @@ if not class_reps_data:
     st.stop()
 
 # --- 1. FILTER CONTROLS ---
-st.markdown("### 1. Filter & Select Class")
-c1, c2, c3 = st.columns(3)
+st.markdown("### 1. Filter Classes")
+st.write("Select the level and year to view and edit all matching classes at once.")
+c1, c2 = st.columns(2)
 
 with c1:
     lvl_filter = st.selectbox("Course Level", ["All", "UG", "PG"])
 with c2:
     yr_filter = st.selectbox("Year", ["All", "I", "II", "III", "IV"])
-with c3:
-    progs = ["All"]
-    if lvl_filter == "UG":
-        progs.extend(year_data.get("programs", {}).get("UG", []))
-    elif lvl_filter == "PG":
-        progs.extend(year_data.get("programs", {}).get("PG", []))
-    else:
-        progs.extend(year_data.get("programs", {}).get("UG", []))
-        progs.extend(year_data.get("programs", {}).get("PG", []))
-        
-    prog_filter = st.selectbox("Program", progs)
 
 # Apply Filter Logic
 filtered_classes = []
@@ -255,7 +245,6 @@ for cls in class_reps_data.keys():
         continue
         
     if yr_filter != "All" and c_yr != yr_filter: continue
-    if prog_filter != "All" and c_prog != prog_filter: continue
     if lvl_filter != "All":
         if c_prog not in year_data.get("programs", {}).get(lvl_filter, []):
             continue
@@ -268,18 +257,23 @@ if not filtered_classes:
     st.warning("No classes configured for this filter.")
     st.stop()
 
-# Select a specific class from the filtered list to edit
-selected_class = st.selectbox("Select Class to Update Results", filtered_classes)
-class_info = class_reps_data[selected_class]
-active_candidates = [c for c in class_info.get("candidates", []) if c.get("status") != "Withdrawn"]
-
-# --- 2. MANAGE RESULTS ---
+# --- 2. MANAGE RESULTS (All filtered classes on one screen) ---
 st.markdown("---")
-st.markdown(f"### 2. Enter Results for: **{selected_class}**")
+st.markdown("### 2. Enter Results")
+st.write("Mark the winning candidate(s) as **Elected**. Unopposed candidates default to **Elected**.")
 
-if not active_candidates:
-    st.info("No active candidates found for this class.")
-else:
+edited_dfs = {}
+
+for cls in filtered_classes:
+    class_info = class_reps_data[cls]
+    active_candidates = [c for c in class_info.get("candidates", []) if c.get("status") != "Withdrawn"]
+    
+    st.markdown(f"#### {cls}")
+    
+    if not active_candidates:
+        st.info("No active candidates found for this class.")
+        continue
+
     # Determine auto-election defaults
     males_in_class = [c for c in active_candidates if c["gender"] == "Male"]
     females_in_class = [c for c in active_candidates if c["gender"] == "Female"]
@@ -309,34 +303,33 @@ else:
 
     df = pd.DataFrame(flat_candidates)
     
-    st.write("Mark the winning candidate(s) as **Elected**. Unopposed candidates are automatically set to **Elected**. Double-click the highlighted Status column to change.")
-    
-    edited_df = st.data_editor(
+    edited_dfs[cls] = st.data_editor(
         df,
         column_config={
             "ID": None,
             "Roll No": st.column_config.NumberColumn(disabled=True),
             "Name": st.column_config.TextColumn(disabled=True),
             "Gender": st.column_config.TextColumn(disabled=True),
-            "Status ✏️": st.column_config.SelectboxColumn("Status ✏️", options=["Elected", "Lost"], required=True, help="Double-click to change status")
+            "Status ✏️": st.column_config.SelectboxColumn("Status ✏️", options=["Elected", "Lost"], required=True)
         },
         use_container_width=True,
         hide_index=True,
-        key=f"results_editor_{selected_class}"
+        key=f"results_editor_{cls}"
     )
 
-    if st.button("💾 Save Results", type="primary"):
+if st.button("💾 Save All Results", type="primary"):
+    for cls, edited_df in edited_dfs.items():
         for index, row in edited_df.iterrows():
             cand_id = row["ID"]
-            new_status = row["Status ✏️"] # Map back from the highlighted column
+            new_status = row["Status ✏️"]
             
-            for c in class_reps_data[selected_class]["candidates"]:
+            for c in class_reps_data[cls]["candidates"]:
                 if c["id"] == cand_id:
                     c["status"] = new_status
                     break
-        db_utils.save_data(db)
-        st.success(f"Results saved for {selected_class}!")
-        st.rerun()
+    db_utils.save_data(db)
+    st.success("All visible results saved successfully!")
+    st.rerun()
 
 # --- 3. EXPORT RESULTS ---
 st.markdown("---")
@@ -396,3 +389,7 @@ with tab2:
             use_container_width=True,
             type="primary"
         )
+
+# --- INJECT FOOTER ---
+if hasattr(db_utils, 'add_footer'):
+    db_utils.add_footer()
