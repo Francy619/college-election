@@ -407,10 +407,19 @@ if election_year not in college_data["election_years"]:
             "PG": DEFAULT_PG.copy()
         },
         "class_reps": {},
-        "main_posts_config": [
+       "main_posts_config": [
             {"post_name": "The Chairperson", "seats": 1},
-            {"post_name": "General Secretary", "seats": 1},
-            {"post_name": "University Union Councillor (UUC)", "seats": 2}
+            {"post_name": "The Vice Chairperson", "seats": 1},
+            {"post_name": "The General Secretary", "seats": 1},
+            {"post_name": "The Councillors to the University Union", "seats": 2}, 
+            {"post_name": "The Arts Club Secretary", "seats": 1},
+            {"post_name": "The Editor of the College Magazine", "seats": 1},
+            {"post_name": "Lady Representative", "seats": 2},
+            {"post_name": "I Year UG Representative", "seats": 1},
+            {"post_name": "II Year UG Representative", "seats": 1},
+            {"post_name": "III Year UG Representative", "seats": 1},
+            {"post_name": "I Year PG Representative", "seats": 1},
+            {"post_name": "II Year PG Representative", "seats": 1}
         ],
         "main_post_candidates": {}
     }
