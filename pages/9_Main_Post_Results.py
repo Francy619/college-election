@@ -26,7 +26,7 @@ college_data = db["colleges"][college_id]
 college_name = college_data.get("college_name", "COLLEGE UNION ELECTION")
 logo_path = college_data.get("logo_path", "")
 
-# --- PDF GENERATOR CLASS (SINGLE COLUMN LAYOUT) ---
+# --- 1st PDF GENERATOR (OFFICIAL DECLARATION) ---
 class MainResultsPDF(FPDF):
     def header(self):
         if hasattr(self, 'logo_path_val') and self.logo_path_val and os.path.exists(self.logo_path_val):
@@ -93,6 +93,20 @@ class MainResultsPDF(FPDF):
             
         self.ln(5)
 
+# --- 2nd PDF GENERATOR (SIMPLIFIED UNION LIST) ---
+class MainElectedPDF(MainResultsPDF):
+    def header(self):
+        # Only College Name and "COLLEGE UNION {YEAR}"
+        if hasattr(self, 'logo_path_val') and self.logo_path_val and os.path.exists(self.logo_path_val):
+            self.image(self.logo_path_val, 10, 8, w=20)
+            
+        self.set_font("Times", "B", 14)
+        self.cell(0, 8, getattr(self, 'college_name_val', ''), ln=True, align="C")
+        self.cell(0, 8, f"COLLEGE UNION {getattr(self, 'year_str', '')}", ln=True, align="C")
+        self.ln(10)
+        
+    # Inherits footer() and draw_post_table() seamlessly from MainResultsPDF
+
 # --- CACHED FILE GENERATORS ---
 @st.cache_data(show_spinner=False)
 def get_main_results_excel_bytes(col_name, yr_str, active_posts, post_data_json):
@@ -125,7 +139,6 @@ def get_main_results_excel_bytes(col_name, yr_str, active_posts, post_data_json)
             continue
             
         ws.merge_cells(start_row=curr_row, start_column=1, end_row=curr_row, end_column=5)
-        # Post name centered, no "Post: " prefix
         c_post = ws.cell(row=curr_row, column=1, value=post); c_post.font = font_heading; c_post.alignment = align_center
         
         ws.cell(row=curr_row+1, column=1, value="SL No").font = font_header; ws.cell(row=curr_row+1, column=1).alignment = align_center; ws.cell(row=curr_row+1, column=1).border = border_thin
@@ -154,6 +167,29 @@ def get_main_results_excel_bytes(col_name, yr_str, active_posts, post_data_json)
 def get_main_results_pdf_bytes(col_name, yr_str, active_posts, post_data_json, logo_p):
     post_data = json.loads(post_data_json)
     pdf = MainResultsPDF()
+    pdf.college_name_val = col_name
+    pdf.year_str = yr_str
+    pdf.logo_path_val = logo_p
+    pdf.add_page()
+    
+    for post in active_posts:
+        active_cands = sorted([c for c in post_data[post]["candidates"] if c.get("status") == "Elected"], key=lambda x: x["name"])
+        
+        if not active_cands:
+            continue
+            
+        estimated_height = 20 + (len(active_cands) * 10)
+        if pdf.get_y() + estimated_height > 270:
+            pdf.add_page()
+            
+        pdf.draw_post_table(post, active_cands)
+        
+    return pdf.output(dest='S').encode('latin1')
+
+@st.cache_data(show_spinner=False)
+def get_main_elected_pdf_bytes(col_name, yr_str, active_posts, post_data_json, logo_p):
+    post_data = json.loads(post_data_json)
+    pdf = MainElectedPDF()
     pdf.college_name_val = col_name
     pdf.year_str = yr_str
     pdf.logo_path_val = logo_p
@@ -204,71 +240,90 @@ if not configured_posts_with_cands:
     st.info("No active candidates found. All candidates may have withdrawn.")
     st.stop()
 
-# --- 1. MANAGE RESULTS ---
-st.markdown("### 1. Enter Results")
-selected_post = st.selectbox("Select Post to Update Results", configured_posts_with_cands)
-
-# Fetch available seats for the selected post
-available_seats = next((p["seats"] for p in posts_config if p["post_name"] == selected_post), 1)
-active_candidates = [c for c in main_post_data[selected_post].get("candidates", []) if c.get("status") != "Withdrawn"]
-
-flat_candidates = []
-for cand in active_candidates:
-    current = cand.get("status", "Nominated")
+# --- AUTO-ELECTION LOGIC (Triggers on Page Load) ---
+# Instantly marks unopposed candidates as "Elected" in the database so they immediately appear in exports!
+auto_saved = False
+for post in configured_posts_with_cands:
+    available_seats = next((p["seats"] for p in posts_config if p["post_name"] == post), 1)
+    active_candidates = [c for c in main_post_data[post]["candidates"] if c.get("status") != "Withdrawn"]
     
-    if current == "Nominated":
-        # Smart Auto-Election Logic based on available seats!
-        if len(active_candidates) <= available_seats:
-            display_status = "Elected"
-        else:
-            display_status = "Lost"
-    else:
-        display_status = current
-        
-    flat_candidates.append({
-        "ID": cand["id"],
-        "Roll No": cand["roll_no"],
-        "Name": cand["name"],
-        "Class": cand.get("class_name", ""),
-        "Status ✏️": display_status
-    })
+    if 0 < len(active_candidates) <= available_seats:
+        for c in main_post_data[post]["candidates"]:
+            if c.get("status") == "Nominated":
+                c["status"] = "Elected"
+                auto_saved = True
 
-df = pd.DataFrame(flat_candidates)
-st.write(f"This post has **{available_seats} seat(s)** available. Mark the winning candidate(s) as **Elected**.")
-if len(active_candidates) <= available_seats:
-    st.success("✨ Candidates are unopposed and have been automatically marked as **Elected**.")
-
-edited_df = st.data_editor(
-    df,
-    column_config={
-        "ID": None,
-        "Roll No": st.column_config.NumberColumn(disabled=True),
-        "Name": st.column_config.TextColumn(disabled=True),
-        "Class": st.column_config.TextColumn(disabled=True),
-        "Status ✏️": st.column_config.SelectboxColumn("Status ✏️", options=["Elected", "Lost"], required=True)
-    },
-    use_container_width=True,
-    hide_index=True,
-    key=f"main_results_editor_{selected_post}"
-)
-
-if st.button("💾 Save Results", type="primary"):
-    for index, row in edited_df.iterrows():
-        cand_id = row["ID"]
-        new_status = row["Status ✏️"]
-        
-        for c in main_post_data[selected_post]["candidates"]:
-            if c["id"] == cand_id:
-                c["status"] = new_status
-                break
+if auto_saved:
     db_utils.save_data(db)
-    st.success(f"Results saved for {selected_post}!")
+
+# --- 1. MANAGE RESULTS (All Posts on One Screen) ---
+st.markdown("### 1. Enter Results")
+st.write("Mark the winning candidate(s) as **Elected**. Unopposed posts are automatically resolved.")
+
+edited_dfs = {}
+
+for post in configured_posts_with_cands:
+    available_seats = next((p["seats"] for p in posts_config if p["post_name"] == post), 1)
+    active_candidates = [c for c in main_post_data[post].get("candidates", []) if c.get("status") != "Withdrawn"]
+    
+    st.markdown(f"#### {post}")
+    if len(active_candidates) <= available_seats:
+        st.success(f"✨ Unopposed ({available_seats} seat(s)). Automatically marked as Elected.")
+    else:
+        st.info(f"🗳️ Contested ({available_seats} seat(s) available). Select the winner(s) below.")
+        
+    flat_candidates = []
+    for cand in active_candidates:
+        current = cand.get("status", "Nominated")
+        
+        # If still "Nominated" (meaning contested but undecided), default to "Lost" on the UI
+        if current == "Nominated":
+            display_status = "Lost"
+        else:
+            display_status = current
+            
+        flat_candidates.append({
+            "ID": cand["id"],
+            "Roll No": cand["roll_no"],
+            "Name": cand["name"],
+            "Class": cand.get("class_name", ""),
+            "Status ✏️": display_status
+        })
+
+    df = pd.DataFrame(flat_candidates)
+    
+    edited_dfs[post] = st.data_editor(
+        df,
+        column_config={
+            "ID": None,
+            "Roll No": st.column_config.NumberColumn(disabled=True),
+            "Name": st.column_config.TextColumn(disabled=True),
+            "Class": st.column_config.TextColumn(disabled=True),
+            "Status ✏️": st.column_config.SelectboxColumn("Status ✏️", options=["Elected", "Lost"], required=True)
+        },
+        use_container_width=True,
+        hide_index=True,
+        key=f"main_results_editor_{post}"
+    )
+
+if st.button("💾 Save All Results", type="primary"):
+    for post, edited_df in edited_dfs.items():
+        for index, row in edited_df.iterrows():
+            cand_id = row["ID"]
+            new_status = row["Status ✏️"]
+            
+            for c in main_post_data[post]["candidates"]:
+                if c["id"] == cand_id:
+                    c["status"] = new_status
+                    break
+    db_utils.save_data(db)
+    st.success("All results saved successfully!")
     st.rerun()
 
 # --- 2. EXPORT FINAL RESULTS ---
 st.markdown("---")
-st.markdown("### 2. 🖨️ Official Declaration of Main Post Winners")
-st.write("Generates the final list of **Elected** candidates across all Main Posts.")
+st.markdown("### 2. 🖨️ Official Declarations & Union Lists")
+st.write("Generate the final list of **Elected** candidates across all Main Posts.")
 
 # Pre-filter to PREVENT GAPS: Only include posts that actually have Elected candidates
 valid_posts = []
@@ -279,13 +334,13 @@ for p_name in configured_posts_with_cands:
 if not valid_posts:
     st.info("No candidates have been marked as Elected yet.")
 else:
-    c_exp1, c_exp2 = st.columns(2)
+    c_exp1, c_exp2, c_exp3 = st.columns(3)
     post_data_json_str = json.dumps(main_post_data)
     
     with c_exp1:
         excel_bytes = get_main_results_excel_bytes(college_name, selected_year, configured_posts_with_cands, post_data_json_str)
         st.download_button(
-            label="📥 Download Master Declaration Excel (.xlsx)", 
+            label="📥 Excel Results (.xlsx)", 
             data=excel_bytes, 
             file_name=f"Main_Post_Results_{selected_year}.xlsx", 
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -295,9 +350,20 @@ else:
     with c_exp2:
         pdf_bytes = get_main_results_pdf_bytes(college_name, selected_year, configured_posts_with_cands, post_data_json_str, logo_path)
         st.download_button(
-            label="📥 Download Master Declaration PDF", 
+            label="📥 Official Declaration (PDF)", 
             data=pdf_bytes, 
-            file_name=f"Main_Post_Results_{selected_year}.pdf",
+            file_name=f"Main_Post_Results_Official_{selected_year}.pdf",
+            mime="application/pdf",
+            use_container_width=True,
+            type="primary"
+        )
+        
+    with c_exp3:
+        union_pdf_bytes = get_main_elected_pdf_bytes(college_name, selected_year, configured_posts_with_cands, post_data_json_str, logo_path)
+        st.download_button(
+            label="📥 College Union List (PDF)", 
+            data=union_pdf_bytes, 
+            file_name=f"College_Union_List_{selected_year}.pdf",
             mime="application/pdf",
             use_container_width=True,
             type="primary"
