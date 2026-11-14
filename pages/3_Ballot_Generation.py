@@ -26,7 +26,7 @@ college_name = college_data.get("college_name", "COLLEGE UNION ELECTION")
 class BallotPDF(FPDF):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Turn OFF auto page breaks so the bottom ballot's Date of Poll NEVER jumps to a new page
+        # Turn OFF auto page breaks so the bottom ballot never jumps to a new page
         self.set_auto_page_break(auto=False, margin=0)
 
     def generate_ballots(self, class_list, class_reps_data, year_str, poll_date_str, college_name):
@@ -77,7 +77,7 @@ class BallotPDF(FPDF):
         # ==========================================
         # LEFT SIDE: Counter Foil
         # ==========================================
-        # Shifted X to 15 for a wider left margin
+        # Shifted X to 25 for a wider left margin
         self.set_xy(25, 12 + y_offset)
         self.set_font("Times", "", 8) 
         line_ht = 8 
@@ -100,6 +100,11 @@ class BallotPDF(FPDF):
         line_ht_btm = 7
         self.cell(60, line_ht_btm, "Name of the elector: ___________________", ln=True)
         self.cell(60, line_ht_btm, "Electoral Roll No. : ___________________", ln=True)
+        
+        # Date of poll moved up directly beneath the roll number with a gap (Matches Main Post)
+        self.ln(3)
+        self.set_font("Times", "", 9)
+        self.cell(60, 5, f"Date of poll: {poll_date_str}", ln=True)
         
         # Draw vertical perforation line (Positioned at 78)
         self.set_line_width(0.4)
@@ -201,14 +206,6 @@ class BallotPDF(FPDF):
                 self.cell(60, row_height, name_text, border=1)
                 self.cell(30, row_height, "", border=1)
                 self.ln()
-
-        # ==========================================
-        # ABSOLUTE BOTTOM POSITIONING (Date of Poll)
-        # ==========================================
-        self.set_font("Times", "", 9)
-        self.set_xy(15, 135 + y_offset) # Also shifted left margin here to match
-        self.cell(60, 5, f"Date of poll: {poll_date_str}")
-        
 
 # --- CACHED PDF GENERATOR ---
 @st.cache_data(show_spinner=False)
@@ -319,3 +316,7 @@ else:
     with st.expander("Show list of classes included in this PDF"):
         for c in contested_classes:
             st.write(f"- {c}")
+
+# --- INJECT FOOTER ---
+if hasattr(db_utils, 'add_footer'):
+    db_utils.add_footer()
