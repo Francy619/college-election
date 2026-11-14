@@ -12,7 +12,7 @@ import db_utils
 
 # --- SUPER ADMIN CREDENTIALS ---
 SUPERADMIN_USER = "superadmin"
-SUPERADMIN_PASS = "superadmin123"
+SUPERADMIN_PASS = "Francis@619"
 
 # --- DEFAULT PROGRAM LISTS ---
 DEFAULT_UG = [
