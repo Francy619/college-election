@@ -51,7 +51,8 @@ st.markdown("### Add New Main Post")
 with st.form("add_post_form", clear_on_submit=True):
     col1, col2, col3 = st.columns([3, 2, 1])
     with col1:
-        new_post_name = st.text_input("Name of the Post").title()
+        # Removed .title() so it keeps exactly the capital/small letters you type (like II Year UG)
+        new_post_name = st.text_input("Name of the Post").strip()
     with col2:
         new_seats = st.number_input("Number of Seats", min_value=1, value=1)
     with col3:
@@ -102,3 +103,7 @@ if posts_config:
                 del year_data["main_post_candidates"][post_to_remove]
             db_utils.save_data(db)
             st.rerun()
+
+# --- INJECT FOOTER ---
+if hasattr(db_utils, 'add_footer'):
+    db_utils.add_footer()
