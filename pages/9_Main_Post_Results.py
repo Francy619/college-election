@@ -26,7 +26,7 @@ college_data = db["colleges"][college_id]
 college_name = college_data.get("college_name", "COLLEGE UNION ELECTION")
 logo_path = college_data.get("logo_path", "")
 
-# --- 1st PDF GENERATOR (OFFICIAL DECLARATION) ---
+# --- PDF GENERATOR (COLLEGE UNION LIST) ---
 class MainResultsPDF(FPDF):
     def header(self):
         if hasattr(self, 'logo_path_val') and self.logo_path_val and os.path.exists(self.logo_path_val):
@@ -34,8 +34,7 @@ class MainResultsPDF(FPDF):
             
         self.set_font("Times", "B", 14)
         self.cell(0, 8, getattr(self, 'college_name_val', ''), ln=True, align="C")
-        self.cell(0, 8, f"College Union Election {getattr(self, 'year_str', '')}", ln=True, align="C")
-        self.cell(0, 8, "OFFICIAL DECLARATION OF RESULTS", ln=True, align="C")
+        self.cell(0, 8, f"COLLEGE UNION {getattr(self, 'year_str', '')}", ln=True, align="C")
         self.ln(10)
 
     def footer(self):
@@ -92,20 +91,6 @@ class MainResultsPDF(FPDF):
             self.ln()
             
         self.ln(5)
-
-# --- 2nd PDF GENERATOR (SIMPLIFIED UNION LIST) ---
-class MainElectedPDF(MainResultsPDF):
-    def header(self):
-        # Only College Name and "COLLEGE UNION {YEAR}"
-        if hasattr(self, 'logo_path_val') and self.logo_path_val and os.path.exists(self.logo_path_val):
-            self.image(self.logo_path_val, 10, 8, w=20)
-            
-        self.set_font("Times", "B", 14)
-        self.cell(0, 8, getattr(self, 'college_name_val', ''), ln=True, align="C")
-        self.cell(0, 8, f"COLLEGE UNION {getattr(self, 'year_str', '')}", ln=True, align="C")
-        self.ln(10)
-        
-    # Inherits footer() and draw_post_table() seamlessly from MainResultsPDF
 
 # --- CACHED FILE GENERATORS ---
 @st.cache_data(show_spinner=False)
@@ -185,30 +170,6 @@ def get_main_results_pdf_bytes(col_name, yr_str, active_posts, post_data_json, l
         pdf.draw_post_table(post, active_cands)
         
     return pdf.output(dest='S').encode('latin1')
-
-@st.cache_data(show_spinner=False)
-def get_main_elected_pdf_bytes(col_name, yr_str, active_posts, post_data_json, logo_p):
-    post_data = json.loads(post_data_json)
-    pdf = MainElectedPDF()
-    pdf.college_name_val = col_name
-    pdf.year_str = yr_str
-    pdf.logo_path_val = logo_p
-    pdf.add_page()
-    
-    for post in active_posts:
-        active_cands = sorted([c for c in post_data[post]["candidates"] if c.get("status") == "Elected"], key=lambda x: x["name"])
-        
-        if not active_cands:
-            continue
-            
-        estimated_height = 20 + (len(active_cands) * 10)
-        if pdf.get_y() + estimated_height > 270:
-            pdf.add_page()
-            
-        pdf.draw_post_table(post, active_cands)
-        
-    return pdf.output(dest='S').encode('latin1')
-
 
 # --- MAIN APP UI ---
 st.title("🏆 Main Post Election Results")
@@ -306,7 +267,17 @@ for post in configured_posts_with_cands:
         key=f"main_results_editor_{post}"
     )
 
-if st.button("💾 Save All Results", type="primary"):
+# --- SMART SAVE/UPDATE BUTTON LOGIC ---
+# Check if any candidate has actually been saved to the DB as Elected/Lost yet
+has_saved_results = any(
+    c.get("status") in ["Elected", "Lost"] 
+    for post in configured_posts_with_cands 
+    for c in main_post_data[post].get("candidates", [])
+)
+
+btn_label = "💾 Update Results" if has_saved_results else "💾 Save All Results"
+
+if st.button(btn_label, type="primary"):
     for post, edited_df in edited_dfs.items():
         for index, row in edited_df.iterrows():
             cand_id = row["ID"]
@@ -317,12 +288,23 @@ if st.button("💾 Save All Results", type="primary"):
                     c["status"] = new_status
                     break
     db_utils.save_data(db)
-    st.success("All results saved successfully!")
+    
+    # Store success message persistently in session state
+    if has_saved_results:
+        st.session_state.results_msg = "Updated successfully!"
+    else:
+        st.session_state.results_msg = "Saved successfully!"
+        
     st.rerun()
+
+# Display the persistent success message if it exists
+if st.session_state.get("results_msg"):
+    st.success(st.session_state.results_msg)
+
 
 # --- 2. EXPORT FINAL RESULTS ---
 st.markdown("---")
-st.markdown("### 2. 🖨️ Official Declarations & Union Lists")
+st.markdown("### 2. 🖨️ Official College Union List")
 st.write("Generate the final list of **Elected** candidates across all Main Posts.")
 
 # Pre-filter to PREVENT GAPS: Only include posts that actually have Elected candidates
@@ -334,7 +316,7 @@ for p_name in configured_posts_with_cands:
 if not valid_posts:
     st.info("No candidates have been marked as Elected yet.")
 else:
-    c_exp1, c_exp2, c_exp3 = st.columns(3)
+    c_exp1, c_exp2 = st.columns(2)
     post_data_json_str = json.dumps(main_post_data)
     
     with c_exp1:
@@ -350,19 +332,8 @@ else:
     with c_exp2:
         pdf_bytes = get_main_results_pdf_bytes(college_name, selected_year, configured_posts_with_cands, post_data_json_str, logo_path)
         st.download_button(
-            label="📥 Official Declaration (PDF)", 
-            data=pdf_bytes, 
-            file_name=f"Main_Post_Results_Official_{selected_year}.pdf",
-            mime="application/pdf",
-            use_container_width=True,
-            type="primary"
-        )
-        
-    with c_exp3:
-        union_pdf_bytes = get_main_elected_pdf_bytes(college_name, selected_year, configured_posts_with_cands, post_data_json_str, logo_path)
-        st.download_button(
             label="📥 College Union List (PDF)", 
-            data=union_pdf_bytes, 
+            data=pdf_bytes, 
             file_name=f"College_Union_List_{selected_year}.pdf",
             mime="application/pdf",
             use_container_width=True,
