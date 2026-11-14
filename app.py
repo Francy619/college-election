@@ -89,7 +89,7 @@ def send_reset_email(recipient_email, otp_code, username):
 # ==========================================
 if not st.session_state.authenticated:
     st.markdown("<h2 style='text-align: center; color: #2E4053;'>COLLEGE UNION ELECTION PORTAL</h2>", unsafe_allow_html=True)
-    st.markdown("<h4 style='text-align: center; color: #5D6D7E;'>Multi-Institution Election Management System</h4><br>", unsafe_allow_html=True)
+    st.markdown("<h4 style='text-align: center; color: #5D6D7E;'>College Union Election Management System</h4><br>", unsafe_allow_html=True)
     
     col1, col2, col3 = st.columns([1, 1.5, 1])
     
