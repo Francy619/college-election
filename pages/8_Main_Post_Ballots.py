@@ -90,6 +90,11 @@ class MainBallotPDF(FPDF):
         self.cell(60, line_ht_btm, "Name of the elector: ___________________", ln=True)
         self.cell(60, line_ht_btm, "Electoral Roll No. : ___________________", ln=True)
         
+        # Date of poll moved up directly beneath the roll number with a gap
+        self.ln(3)
+        self.set_font("Times", "", 9)
+        self.cell(60, 5, f"Date of poll: {poll_date_str}", ln=True)
+        
         # Draw vertical perforation line (Positioned at 78)
         self.set_line_width(0.4)
         for y in range(int(5 + y_offset), int(143 + y_offset), 4):
@@ -147,36 +152,51 @@ class MainBallotPDF(FPDF):
         
         self.set_x(85)
         self.set_font("Times", "B", 10)
-        self.cell(20, 8, "Roll No", border=1, align="C")
-        self.cell(60, 8, "Name of the Candidate", border=1, align="C")
+        # Widened Name column to 65, reduced Roll to 15
+        self.cell(15, 8, "Roll No", border=1, align="C")
+        self.cell(65, 8, "Name & Class", border=1, align="C")
         self.cell(30, 8, "Space for Mark", border=1, align="C")
         self.ln()
         
-        row_height = 10 
+        # Increased row height to fit both Name and Class
+        row_height = 14 
         
         for cand in candidates:
-            self.set_x(85)
-            self.set_font("Times", "B", 12)
-            self.cell(20, row_height, str(cand['roll_no']), border=1, align="C")
+            start_y = self.get_y()
             
+            self.set_xy(85, start_y)
+            self.set_font("Times", "B", 12)
+            self.cell(15, row_height, str(cand['roll_no']), border=1, align="C")
+            
+            # Draw empty borders for Name and Mark columns
+            self.set_xy(100, start_y)
+            self.cell(65, row_height, "", border=1)
+            self.set_xy(165, start_y)
+            self.cell(30, row_height, "", border=1)
+            
+            # Fill in Candidate Name (Top Half)
             name_text = str(cand['name'])
             font_sz = 12
             self.set_font("Times", "B", font_sz)
-            while self.get_string_width(name_text) > 58 and font_sz > 6:
+            while self.get_string_width(name_text) > 63 and font_sz > 6:
                 font_sz -= 0.5
                 self.set_font("Times", "B", font_sz)
+            
+            self.set_xy(100, start_y + 2)
+            self.cell(65, 6, name_text, align="C")
+            
+            # Fill in Class Name (Bottom Half)
+            class_text = str(cand.get('class_name', ''))
+            font_sz_cls = 10
+            self.set_font("Times", "", font_sz_cls)
+            while self.get_string_width(class_text) > 63 and font_sz_cls > 6:
+                font_sz_cls -= 0.5
+                self.set_font("Times", "", font_sz_cls)
                 
-            self.cell(60, row_height, name_text, border=1)
-            self.cell(30, row_height, "", border=1)
-            self.ln()
-
-        # ==========================================
-        # ABSOLUTE BOTTOM POSITIONING (Date of Poll)
-        # ==========================================
-        self.set_font("Times", "", 9)
-        self.set_xy(15, 135 + y_offset)
-        self.cell(60, 5, f"Date of poll: {poll_date_str}")
-        
+            self.set_xy(100, start_y + 7.5)
+            self.cell(65, 5, class_text, align="C")
+            
+            self.set_xy(85, start_y + row_height)
 
 # --- CACHED PDF GENERATOR ---
 @st.cache_data(show_spinner=False)
@@ -253,3 +273,7 @@ else:
     with st.expander("Show list of Posts included in this PDF"):
         for p in contested_posts:
             st.write(f"- {p}")
+
+# --- INJECT FOOTER ---
+if hasattr(db_utils, 'add_footer'):
+    db_utils.add_footer()
